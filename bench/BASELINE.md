@@ -43,12 +43,28 @@ exact corpus, verifying token-for-token equality before timing.
 
 ## sonictok progress (single-thread, this machine, `bench/corpus.txt`)
 
-| Stage | cl100k MB/s | vs quicktok | Notes |
-|-------|------------:|------------:|-------|
-| Rung 0/1 (HashMap, scalar pretok) | ~35.8 | ~0.22× | byte-exact; matches bpe-openai, ~2.5× tiktoken |
+Throughput is criterion's median MiB/s for `cargo bench -p sonictok --bench
+encode` (cl100k, `bench/corpus.txt`). 1 MiB/s ≈ 1.049 MB/s.
 
-Captured via `cargo bench -p sonictok --bench encode` (Plan 1 complete). The
-optimization ladder (Plans 3+) climbs from here toward the target below.
+| Stage | cl100k MiB/s | vs quicktok* | Notes |
+|-------|------------:|------------:|-------|
+| Rung 0/1 (HashMap, scalar pretok) | 35.8 | 0.23× | byte-exact baseline; matches bpe-openai |
+| Rung A — FxHash rank table | 41.6 | 0.27× | +16% |
+| Rung B — ASCII class fast-path | 76.8 | 0.50× | +84% (biggest win) |
+| Rung C1 — ASCII char_at fast path | 80.6 | 0.53× | +5% |
+| Rung C2 — reuse BPE parts scratch | 82.3 | 0.54× | +2% |
+| Rung D — dense 2-byte pair table | 87.1 | 0.57× | +6% |
+
+*vs quicktok native 153.3 MiB/s (= 160.7 MB/s).
+
+**Net: 35.8 → 87.1 MiB/s (2.43×)**, byte-exact throughout (fixtures + oracle-diff
++ proptest green at every rung). Decisively beats every non-quicktok exact
+tokenizer (bpe-openai ~37 MB/s, tiktoken ~14 MB/s). `target-cpu=native` was a
+wash (hot path isn't autovectorized).
+
+Remaining path to quicktok-native (high effort, best done supervised): hand-
+compiled SIMD pretokenizer (Rung 4) and the 2-byte trie + dense validity memos
+(quicktok's structural wins). These are the ~1.85× still on the table.
 
 ## sonictok targets (single-thread, this machine)
 
