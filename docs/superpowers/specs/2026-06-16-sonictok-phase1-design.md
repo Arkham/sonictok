@@ -211,8 +211,10 @@ a benchmark gate — complexity that doesn't pay is reverted.
   reference** for the optimization-ladder diff gate.
 - **Rung 1 — Ranked-merge core.** tiktoken's exact merge loop over a small stack
   array; whole-piece direct lookup first (most short pieces resolve in one
-  probe). Replace `HashMap` with a fast open-addressed table (`ahash`/FxHash) or
-  a static perfect hash.
+  probe). Replace `HashMap` with a stdlib `DefaultHasher` open-addressed table or jump
+  straight to the static perfect hash — no external dependency either way
+  (`sonictok-core` stays zero-production-dep; the perfect hash is the §6.1
+  winning path, built offline by `xtask` and materialized as a static array).
 - **Rung 2 — 2-byte trie.** quicktok's key win: a trie keyed on 2 input bytes
   per node so the longest-match walk consumes 16 bits per 8-byte slot load, plus
   a direct table for CJK. Replicated in Rust with `#[repr(C)]` arrays and
@@ -399,8 +401,9 @@ Five layers — this is where "extremely accurate and well tested" gets teeth.
    alongside results.
 3. **Property tests (`proptest`).** Invariants over random inputs:
    `decode(encode_ordinary(x)) == x` for valid UTF-8; encode never panics on
-   arbitrary bytes; `count(x) == encode_ordinary(x).len()`; batch result equals
-   per-doc encode; **rung-N output == rung-0 oracle output**.
+   arbitrary bytes; `count(x) == encode_ordinary(x).len()`; **rung-N output ==
+   rung-0 oracle output**. (The batch-vs-per-doc-equality invariant activates in
+   Phase 4 with the batch APIs.)
 4. **Fuzzing (`cargo fuzz`).** Continuous targets on encode (arbitrary bytes),
    decode (arbitrary id arrays), and round-trip. Crash/panic = bug.
 5. **The "oracle diff" gate.** Rung 0 (naive, obviously-correct) stays in the
