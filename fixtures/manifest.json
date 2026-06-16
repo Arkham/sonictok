@@ -1,0 +1,8 @@
+{
+  "generated_at": "2026-06-16T16:38:36.089983+00:00",
+  "tiktoken_version": "0.13.0",
+  "encodings": [
+    "cl100k_base"
+  ],
+  "content_sha256": "695f035ed3828f2bc9bf6dd680d5e1ba8b1284385a1aaecc6bb63fbddfd52b5f"
+}
