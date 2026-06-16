@@ -106,12 +106,22 @@ product features instead (all byte-exact, all tested):
 
 ## Phase status vs the spec
 
-- Phase 1 (core + OpenAI encodings): **complete** and exact.
-- Phase 2 (open-model encodings llama3/qwen3 + NFC): not started.
-- Phase 3 (generic importer): not started.
-- Phase 4 (bindings/packaging, batch APIs): **substantially done** — C ABI,
-  Python wheel (PyO3/maturin), parallel batch, embedded data all landed. Left:
-  CMake/`find_package`, published wheels/CI matrix, PGO.
+- Phase 1 (core + OpenAI encodings): **complete** and exact; ~90% of
+  quicktok-native single-thread, ~matching batch.
+- Phase 2 (open-model encodings): **done** — llama3 + qwen3 (incl. NFC),
+  byte-exact vs HF tokenizers.
+- Phase 3 (generic importer): **done** — self-describing v2 blobs +
+  `tools/import_tokenizer.py` (classify / convert / verify / refuse).
+- Phase 4 (bindings/packaging): C ABI, Python wheel (PyO3/maturin), parallel
+  batch, embedded data — **done**.
+
+## Won't do (explicitly out of scope)
+
+- **llama4** — Meta gates the vocab; no ungated source to fetch/verify against.
+- **CMake / `find_package`** packaging — the C ABI + header already cover FFI.
+- **Published wheels / cibuildwheel matrix** — `maturin develop` covers local
+  use; not publishing to PyPI.
+- **PGO / native-vs-portable build-profile split** — release-pipeline polish.
 
 ## Final tally (this session)
 
