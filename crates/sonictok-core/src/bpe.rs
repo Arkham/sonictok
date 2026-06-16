@@ -38,7 +38,7 @@ pub fn byte_pair_encode<R: RankLookup>(
     parts.clear();
     let mut min_rank: (Rank, usize) = (RANK_MAX, usize::MAX);
     for i in 0..piece.len() - 1 {
-        let rank = ranks.get(&piece[i..i + 2]).unwrap_or(RANK_MAX);
+        let rank = ranks.get_pair(piece[i], piece[i + 1]);
         if rank < min_rank.0 {
             min_rank = (rank, i);
         }
@@ -50,9 +50,9 @@ pub fn byte_pair_encode<R: RankLookup>(
     while min_rank.0 != RANK_MAX {
         let i = min_rank.1;
         if i > 0 {
-            parts[i - 1].1 = pair_rank(piece, &parts, i - 1, ranks);
+            parts[i - 1].1 = pair_rank(piece, parts, i - 1, ranks);
         }
-        parts[i].1 = pair_rank(piece, &parts, i, ranks);
+        parts[i].1 = pair_rank(piece, parts, i, ranks);
         parts.remove(i + 1);
 
         min_rank = (RANK_MAX, usize::MAX);
