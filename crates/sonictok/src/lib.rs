@@ -7,10 +7,19 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use sonictok_core::encoding::{Decoder, Engine};
-use sonictok_core::pretok::cl100k::Cl100kPretokenizer;
+use sonictok_core::pretok::Grammar;
 use sonictok_core::rank::{Rank, RankMap};
 use sonictok_core::specials::SpecialTokens;
 use sonictok_data::VocabBlob;
+
+/// Map a bundled encoding name to its pretokenizer grammar.
+fn grammar_for(encoding: &str) -> Option<Grammar> {
+    match encoding {
+        "cl100k_base" => Some(Grammar::Cl100k),
+        "o200k_base" | "o200k_harmony" => Some(Grammar::O200k),
+        _ => None,
+    }
+}
 
 /// Which special tokens `encode` will accept without erroring.
 pub enum Allowed<'a> {
@@ -31,6 +40,7 @@ impl Decoder for DenseDecoder {
 
 pub struct Tokenizer {
     encoding: String,
+    grammar: Grammar,
     ranks: RankMap,
     decoder: DenseDecoder,
     specials: SpecialTokens,
@@ -46,7 +56,9 @@ const _: fn() = || {
 };
 
 impl Tokenizer {
-    pub fn from_blob(blob: VocabBlob) -> Self {
+    pub fn from_blob(blob: VocabBlob) -> Result<Self, Error> {
+        let grammar =
+            grammar_for(&blob.name).ok_or_else(|| Error::UnsupportedEncoding(blob.name.clone()))?;
         let vocab_size = blob.ranks.len();
         let n_vocab = (blob.max_id as usize) + 1;
         let mut by_id: Vec<Option<Vec<u8>>> = vec![None; n_vocab];
@@ -55,28 +67,29 @@ impl Tokenizer {
         }
         let ranks = RankMap::from_pairs(blob.ranks);
         let specials = SpecialTokens::new(blob.specials);
-        Tokenizer {
+        Ok(Tokenizer {
             encoding: blob.name,
+            grammar,
             ranks,
             decoder: DenseDecoder { by_id },
             specials,
             n_vocab,
             vocab_size,
-        }
+        })
     }
 
     pub fn load_dir(dir: &Path, encoding: &str) -> Result<Self, Error> {
-        if encoding != "cl100k_base" {
+        if grammar_for(encoding).is_none() {
             return Err(Error::UnsupportedEncoding(encoding.to_string()));
         }
         let path = dir.join(format!("{encoding}.stb"));
         let bytes = std::fs::read(path)?;
         let blob = VocabBlob::from_bytes(&bytes)?;
-        Ok(Self::from_blob(blob))
+        Self::from_blob(blob)
     }
 
-    fn engine(&self) -> Engine<'_, RankMap, DenseDecoder, Cl100kPretokenizer> {
-        Engine::new(&self.ranks, &self.decoder, &self.specials)
+    fn engine(&self) -> Engine<'_, RankMap, DenseDecoder> {
+        Engine::new(&self.ranks, &self.decoder, &self.specials, self.grammar)
     }
 
     pub fn encode_ordinary(&self, text: &str) -> Vec<u32> {
@@ -187,6 +200,29 @@ mod tests {
         let s = "The quick brown 🦊 jumps — 日本語 1234!";
         let ids = t.encode_ordinary(s);
         assert_eq!(t.decode(&ids).unwrap(), s);
+    }
+
+    #[test]
+    #[ignore = "requires data/o200k_base.stb"]
+    fn o200k_known_ids() {
+        let t = get_encoding("o200k_base").unwrap();
+        assert_eq!(t.encode_ordinary("hello world"), vec![24912, 2375]);
+        assert_eq!(t.n_vocab(), 200019);
+        assert_eq!(t.vocab_size(), 199998);
+        let s = "camelCase don't 日本語 1234!";
+        assert_eq!(t.decode(&t.encode_ordinary(s)).unwrap(), s);
+    }
+
+    #[test]
+    #[ignore = "requires data/o200k_harmony.stb"]
+    fn o200k_harmony_loads() {
+        let t = get_encoding("o200k_harmony").unwrap();
+        assert_eq!(t.encoding(), "o200k_harmony");
+        assert_eq!(t.n_vocab(), 201088);
+        // harmony chat specials are recognized
+        let ids = t.encode_with_special("<|start|>hi<|end|>");
+        assert_eq!(ids.first(), Some(&200006));
+        assert_eq!(ids.last(), Some(&200007));
     }
 
     #[test]

@@ -9,5 +9,6 @@ pub mod specials;
 pub mod unicode;
 pub use bpe::byte_pair_encode;
 pub use encoding::{Decoder, DisallowedSpecial, Engine, InvalidToken};
+pub use pretok::Grammar;
 pub use rank::{RANK_MAX, Rank, RankLookup, RankMap};
 pub use specials::SpecialTokens;

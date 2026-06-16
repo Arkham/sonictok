@@ -2,8 +2,12 @@
 //! (?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}|
 //!  ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+
 use crate::pretok::Pretokenizer;
+use crate::pretok::common::{
+    char_at, is_cr_or_lf, match_contraction, scan_number, scan_punct, scan_whitespace,
+};
 use crate::unicode::{is_letter, is_number, is_whitespace};
 
+#[derive(Default)]
 pub struct Cl100kPretokenizer {
     pos: usize,
 }
@@ -15,29 +19,6 @@ impl Cl100kPretokenizer {
     pub fn reset(&mut self) {
         self.pos = 0;
     }
-}
-impl Default for Cl100kPretokenizer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Decode the UTF-8 char starting at `i`. Returns (char, byte_len).
-#[inline]
-fn char_at(input: &[u8], i: usize) -> (char, usize) {
-    // SAFETY: `input` always originates from a `&str` (encode operates on
-    // `&str`), and every alternative advances by whole UTF-8 char widths, so `i`
-    // is always on a char boundary; the tail is therefore valid UTF-8.
-    let s = unsafe { std::str::from_utf8_unchecked(&input[i..]) };
-    match s.chars().next() {
-        Some(c) => (c, c.len_utf8()),
-        None => ('\u{0}', 0),
-    }
-}
-
-#[inline]
-fn is_cr_or_lf(c: char) -> bool {
-    c == '\r' || c == '\n'
 }
 
 impl Pretokenizer for Cl100kPretokenizer {
@@ -60,7 +41,6 @@ impl Pretokenizer for Cl100kPretokenizer {
         {
             let mut j = start;
             let mut c = c0;
-            // optional single leading non-(CR/LF/letter/number)
             if !is_cr_or_lf(c) && !is_letter(c) && !is_number(c) {
                 let nj = j + w0;
                 if nj < input.len() {
@@ -72,7 +52,6 @@ impl Pretokenizer for Cl100kPretokenizer {
                 }
             }
             if is_letter(c) {
-                // consume \p{L}+
                 let mut k = j;
                 while k < input.len() {
                     let (ck, wk) = char_at(input, k);
@@ -89,139 +68,25 @@ impl Pretokenizer for Cl100kPretokenizer {
 
         // Alt 3: \p{N}{1,3}
         if is_number(c0) {
-            let mut k = start;
-            let mut count = 0;
-            while k < input.len() && count < 3 {
-                let (ck, wk) = char_at(input, k);
-                if is_number(ck) {
-                    k += wk;
-                    count += 1;
-                } else {
-                    break;
-                }
-            }
-            self.pos = k;
-            return Some((start, k));
+            self.pos = scan_number(input, start);
+            return Some((start, self.pos));
         }
 
         // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n]*
-        {
-            let mut j = start;
-            let mut c = c0;
-            if c == ' ' {
-                let nj = j + w0;
-                if nj < input.len() {
-                    let (c2, _) = char_at(input, nj);
-                    if !is_whitespace(c2) && !is_letter(c2) && !is_number(c2) {
-                        j = nj;
-                        c = c2;
-                    }
-                }
-            }
-            if !is_whitespace(c) && !is_letter(c) && !is_number(c) {
-                let mut k = j;
-                while k < input.len() {
-                    let (ck, wk) = char_at(input, k);
-                    if !is_whitespace(ck) && !is_letter(ck) && !is_number(ck) {
-                        k += wk;
-                    } else {
-                        break;
-                    }
-                }
-                // trailing [\r\n]*
-                while k < input.len() {
-                    let (ck, wk) = char_at(input, k);
-                    if is_cr_or_lf(ck) {
-                        k += wk;
-                    } else {
-                        break;
-                    }
-                }
-                self.pos = k;
-                return Some((start, k));
-            }
-        }
-
-        // Alt 5: \s*[\r\n]+  — a whitespace prefix that ends at the last CR/LF.
-        if is_whitespace(c0) {
-            let mut last_nl_end: Option<usize> = None;
-            let mut t = start;
-            while t < input.len() {
-                let (ct, wt) = char_at(input, t);
-                if !is_whitespace(ct) {
-                    break;
-                }
-                t += wt;
-                if is_cr_or_lf(ct) {
-                    // extend over a contiguous CR/LF run
-                    while t < input.len() {
-                        let (cu, wu) = char_at(input, t);
-                        if is_cr_or_lf(cu) {
-                            t += wu;
-                        } else {
-                            break;
-                        }
-                    }
-                    last_nl_end = Some(t);
-                }
-            }
-            if let Some(end) = last_nl_end {
-                self.pos = end;
-                return Some((start, end));
-            }
-            // Alt 6: \s+(?!\S)  / Alt 7: \s+. Take the maximal whitespace run; if a
-            // non-space follows, leave its LAST whitespace char to join the word.
-            let mut end = start;
-            while end < input.len() {
-                let (ce, we) = char_at(input, end);
-                if is_whitespace(ce) {
-                    end += we;
-                } else {
-                    break;
-                }
-            }
-            if end < input.len() {
-                let last_start = prev_char_start(input, end);
-                if last_start > start {
-                    self.pos = last_start;
-                    return Some((start, last_start));
-                }
-                // single whitespace before a non-space: alt 6 fails, alt 7 takes it
-            }
+        if let Some(end) = scan_punct(input, start, false) {
             self.pos = end;
             return Some((start, end));
         }
 
-        // Fallback: unreachable for valid inputs; consume one char to guarantee
-        // progress. Oracle-diff would flag any reachable case.
+        // Alt 5-7: whitespace cascade
+        if is_whitespace(c0) {
+            self.pos = scan_whitespace(input, start);
+            return Some((start, self.pos));
+        }
+
+        // Fallback: unreachable for valid inputs; guarantee progress.
         self.pos = start + w0.max(1);
         Some((start, self.pos))
-    }
-}
-
-/// Start byte index of the char immediately before byte index `end`.
-#[inline]
-fn prev_char_start(input: &[u8], end: usize) -> usize {
-    if end == 0 {
-        return 0;
-    }
-    let mut i = end - 1;
-    while i > 0 && (input[i] & 0xC0) == 0x80 {
-        i -= 1;
-    }
-    i
-}
-
-/// (?i:'s|'t|'re|'ve|'m|'ll|'d) starting at `start` (which is the `'`).
-/// Returns total byte length of the match including the apostrophe, or None.
-fn match_contraction(input: &[u8], start: usize) -> Option<usize> {
-    let rest = &input[start + 1..];
-    let lc = |b: u8| b.to_ascii_lowercase();
-    let g = |n: usize| rest.get(n).copied().map(lc);
-    match (g(0), g(1)) {
-        (Some(b's'), _) | (Some(b't'), _) | (Some(b'm'), _) | (Some(b'd'), _) => Some(2),
-        (Some(b'r'), Some(b'e')) | (Some(b'v'), Some(b'e')) | (Some(b'l'), Some(b'l')) => Some(3),
-        _ => None,
     }
 }
 

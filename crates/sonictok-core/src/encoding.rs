@@ -1,7 +1,7 @@
 //! The encode/decode engine over a loaded vocab. Generic over the pretokenizer
 //! and rank backing so optimization rungs slot in without touching this layer.
 use crate::bpe::byte_pair_encode;
-use crate::pretok::Pretokenizer;
+use crate::pretok::{Grammar, Pretokenizer, Scanner};
 use crate::rank::{Rank, RankLookup};
 use crate::specials::SpecialTokens;
 
@@ -21,20 +21,25 @@ pub trait Decoder {
     fn bytes_for(&self, id: Rank) -> Option<&[u8]>;
 }
 
-pub struct Engine<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> {
+pub struct Engine<'a, R: RankLookup, D: Decoder> {
     pub ranks: &'a R,
     pub decoder: &'a D,
     pub specials: &'a SpecialTokens,
-    _pre: std::marker::PhantomData<P>,
+    pub grammar: Grammar,
 }
 
-impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, P> {
-    pub fn new(ranks: &'a R, decoder: &'a D, specials: &'a SpecialTokens) -> Self {
+impl<'a, R: RankLookup, D: Decoder> Engine<'a, R, D> {
+    pub fn new(
+        ranks: &'a R,
+        decoder: &'a D,
+        specials: &'a SpecialTokens,
+        grammar: Grammar,
+    ) -> Self {
         Self {
             ranks,
             decoder,
             specials,
-            _pre: std::marker::PhantomData,
+            grammar,
         }
     }
 
@@ -44,7 +49,7 @@ impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, 
     }
 
     fn encode_ordinary_bytes(&self, bytes: &[u8], out: &mut Vec<Rank>) {
-        let mut pre = P::default();
+        let mut pre = Scanner::new(self.grammar);
         while let Some((a, z)) = pre.next_piece(bytes) {
             byte_pair_encode(&bytes[a..z], self.ranks, out);
         }
@@ -132,7 +137,7 @@ impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pretok::cl100k::Cl100kPretokenizer;
+    use crate::pretok::Grammar;
     use crate::rank::RankMap;
 
     struct VecDecoder(Vec<Option<Vec<u8>>>);
@@ -153,7 +158,7 @@ mod tests {
     fn ordinary_roundtrip() {
         let (v, d) = byte_vocab();
         let sp = SpecialTokens::new(vec![]);
-        let eng = Engine::<_, _, Cl100kPretokenizer>::new(&v, &d, &sp);
+        let eng = Engine::new(&v, &d, &sp, Grammar::Cl100k);
         let mut ids = vec![];
         eng.encode_ordinary_into("hello world", &mut ids);
         let mut back = vec![];
@@ -165,7 +170,7 @@ mod tests {
     fn count_matches_len() {
         let (v, d) = byte_vocab();
         let sp = SpecialTokens::new(vec![]);
-        let eng = Engine::<_, _, Cl100kPretokenizer>::new(&v, &d, &sp);
+        let eng = Engine::new(&v, &d, &sp, Grammar::Cl100k);
         let mut ids = vec![];
         eng.encode_ordinary_into("abc 123", &mut ids);
         assert_eq!(eng.count("abc 123"), ids.len());
@@ -175,7 +180,7 @@ mod tests {
     fn disallowed_special_errors() {
         let (v, d) = byte_vocab();
         let sp = SpecialTokens::new(vec![(b"<|endoftext|>".to_vec(), 100257)]);
-        let eng = Engine::<_, _, Cl100kPretokenizer>::new(&v, &d, &sp);
+        let eng = Engine::new(&v, &d, &sp, Grammar::Cl100k);
         let mut ids = vec![];
         let deny_all = |_id| false;
         let err = eng
@@ -189,7 +194,7 @@ mod tests {
     fn with_special_emits_id() {
         let (v, d) = byte_vocab();
         let sp = SpecialTokens::new(vec![(b"<|endoftext|>".to_vec(), 100257)]);
-        let eng = Engine::<_, _, Cl100kPretokenizer>::new(&v, &d, &sp);
+        let eng = Engine::new(&v, &d, &sp, Grammar::Cl100k);
         let mut ids = vec![];
         eng.encode_with_special_into("a<|endoftext|>", &mut ids);
         assert_eq!(*ids.last().unwrap(), 100257);

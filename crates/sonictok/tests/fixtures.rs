@@ -22,15 +22,14 @@ fn decode_input(r: &Record) -> Vec<u8> {
     }
 }
 
-#[test]
-fn cl100k_fixtures_match() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../fixtures/cl100k_base.json"
+fn check_encoding(encoding: &str) {
+    let path = format!(
+        "{}/../../fixtures/{encoding}.json",
+        env!("CARGO_MANIFEST_DIR")
     );
-    let json = std::fs::read_to_string(path).expect("run tools/gen_fixtures.py");
+    let json = std::fs::read_to_string(&path).expect("run tools/gen_fixtures.py");
     let records: Vec<Record> = serde_json::from_str(&json).unwrap();
-    let t = get_encoding("cl100k_base").expect("data/cl100k_base.stb");
+    let t = get_encoding(encoding).unwrap_or_else(|_| panic!("data/{encoding}.stb"));
 
     let mut failures = 0;
     for (i, r) in records.iter().enumerate() {
@@ -44,10 +43,25 @@ fn cl100k_fixtures_match() {
         if got != r.ids {
             failures += 1;
             eprintln!(
-                "record {i} ({:?}) mismatch:\n  expected {:?}\n  got      {:?}",
+                "[{encoding}] record {i} ({:?}) mismatch:\n  expected {:?}\n  got      {:?}",
                 r.mode, r.ids, got
             );
         }
     }
-    assert_eq!(failures, 0, "{failures} fixture mismatches");
+    assert_eq!(failures, 0, "{failures} fixture mismatches for {encoding}");
+}
+
+#[test]
+fn cl100k_fixtures_match() {
+    check_encoding("cl100k_base");
+}
+
+#[test]
+fn o200k_base_fixtures_match() {
+    check_encoding("o200k_base");
+}
+
+#[test]
+fn o200k_harmony_fixtures_match() {
+    check_encoding("o200k_harmony");
 }

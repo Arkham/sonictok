@@ -1,85 +1,84 @@
 [
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [],
-"input": ""
+"input": "",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 220
 ],
-"input": " "
+"input": " ",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 256
 ],
-"input": "  "
+"input": "  ",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 262
 ],
-"input": "   "
+"input": "   ",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 198
 ],
-"input": "\n"
+"input": "\n",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 271
 ],
-"input": "\n\n"
+"input": "\n\n",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 39420
 ],
-"input": "\t  \n"
+"input": "\t  \n",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 64
 ],
-"input": "a"
+"input": "a",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 32
 ],
-"input": "A"
+"input": "A",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 15339,
 1917
 ],
-"input": "hello world"
+"input": "hello world",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 791,
@@ -93,10 +92,10 @@
 5679,
 13
 ],
-"input": "The quick brown fox jumps over the lazy dog."
+"input": "The quick brown fox jumps over the lazy dog.",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 40,
@@ -114,10 +113,10 @@
 433,
 596
 ],
-"input": "I'm don't won't he'll they've we're it's"
+"input": "I'm don't won't he'll they've we're it's",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 16,
@@ -134,10 +133,10 @@
 220,
 11194
 ],
-"input": "1 12 123 1234 12345 007"
+"input": "1 12 123 1234 12345 007",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 73239,
@@ -148,12 +147,14 @@
 48822,
 39585,
 100151,
-29640
+29640,
+62144,
+4627
 ],
-"input": "snake_case camelCase kebab-case CONSTANT_CASE"
+"input": "snake_case camelCase kebab-case CONSTANT_CASE HTTPSConnection",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 755,
@@ -168,10 +169,10 @@
 674,
 4068
 ],
-"input": "def f(x): return x+1  # comment"
+"input": "def f(x): return x+1  # comment",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 2485,
@@ -189,10 +190,25 @@
 2,
 34298
 ],
-"input": "https://example.com/path?q=1&y=2#frag"
+"input": "https://example.com/path?q=1&y=2#frag",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
+"mode": "ordinary",
+"ids": [
+64,
+3554,
+2971,
+3529,
+1853,
+33529,
+24849,
+26721
+],
+"input": "a/b/c/d path/to/file.rs",
+"encoding": "cl100k_base"
+},
+{
 "mode": "ordinary",
 "ids": [
 9080,
@@ -215,10 +231,10 @@
 45204,
 54289
 ],
-"input": "日本語のテキスト 中文文本 한국어 텍스트"
+"input": "日本語のテキスト 中文文本 한국어 텍스트",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 38623,
@@ -251,10 +267,10 @@
 54,
 41
 ],
-"input": "emoji 🦊🚀👩‍👩‍👧‍👦 family ZWJ"
+"input": "emoji 🦊🚀👩‍👩‍👧‍👦 family ZWJ",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 936,
@@ -278,10 +294,10 @@
 22447,
 104
 ],
-"input": "café naïve résumé Москва Ω≈ç√∫"
+"input": "café naïve résumé Москва Ω≈ç√∫",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 376,
@@ -290,20 +306,20 @@
 1618,
 415
 ],
-"input": "trailing spaces here     "
+"input": "trailing spaces here     ",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 257,
 6522,
 12908
 ],
-"input": "     leading spaces"
+"input": "     leading spaces",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 57785,
@@ -317,10 +333,10 @@
 8128,
 319
 ],
-"input": "mixed\twhitespace\n\nand   newlines\r\n"
+"input": "mixed\twhitespace\n\nand   newlines\r\n",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 27,
@@ -340,10 +356,10 @@
 91,
 29
 ],
-"input": "<|endoftext|> in the middle <|endofprompt|>"
+"input": "<|endoftext|> in the middle <|endofprompt|>",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 2201,
@@ -357,10 +373,29 @@
 4037,
 59821
 ],
-"input": "no special but looks like <| not a token |>"
+"input": "no special but looks like <| not a token |>",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
+"mode": "ordinary",
+"ids": [
+87533,
+4301,
+7375,
+790,
+78,
+3522,
+323,
+13398,
+32500,
+50,
+1243,
+4827
+],
+"input": "MixedCaseWORDSTogether and ALLCAPS then lower",
+"encoding": "cl100k_base"
+},
+{
 "mode": "ordinary",
 "ids": [
 70540,
@@ -489,10 +524,10 @@
 70540,
 70540
 ],
-"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 370,
@@ -996,10 +1031,10 @@
 370,
 370
 ],
-"input": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab"
+"input": "abababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababababab",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "ordinary",
 "ids": [
 11531,
@@ -1170,10 +1205,10 @@
 19282,
 4578
 ],
-"input": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+"input": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "with_special",
 "ids": [
 100257,
@@ -1183,10 +1218,10 @@
 220,
 100276
 ],
-"input": "<|endoftext|> in the middle <|endofprompt|>"
+"input": "<|endoftext|> in the middle <|endofprompt|>",
+"encoding": "cl100k_base"
 },
 {
-"encoding": "cl100k_base",
 "mode": "with_special",
 "ids": [
 2201,
@@ -1200,6 +1235,7 @@
 4037,
 59821
 ],
-"input": "no special but looks like <| not a token |>"
+"input": "no special but looks like <| not a token |>",
+"encoding": "cl100k_base"
 }
 ]

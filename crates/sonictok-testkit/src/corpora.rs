@@ -9,8 +9,9 @@ fn repo_root() -> PathBuf {
 pub fn corpus_text() -> String {
     std::fs::read_to_string(repo_root().join("bench/corpus.txt")).expect("bench/corpus.txt")
 }
-pub fn cl100k_blob() -> sonictok_data::VocabBlob {
-    let bytes = std::fs::read(repo_root().join("data/cl100k_base.stb"))
-        .expect("data/cl100k_base.stb (run: cargo run -p xtask -- build-data cl100k_base)");
+pub fn blob(encoding: &str) -> sonictok_data::VocabBlob {
+    let path = repo_root().join(format!("data/{encoding}.stb"));
+    let bytes = std::fs::read(&path)
+        .unwrap_or_else(|_| panic!("{path:?} (run: cargo run -p xtask -- build-data {encoding})"));
     sonictok_data::VocabBlob::from_bytes(&bytes).unwrap()
 }

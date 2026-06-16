@@ -29,6 +29,16 @@ pub fn is_number(c: char) -> bool {
 pub fn is_whitespace(c: char) -> bool {
     in_ranges(c as u32, tables::WHITE_SPACE)
 }
+/// o200k upper-class: `[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]`.
+#[inline]
+pub fn is_o200k_upper(c: char) -> bool {
+    in_ranges(c as u32, tables::O200K_UPPER)
+}
+/// o200k lower-class: `[\p{Ll}\p{Lm}\p{Lo}\p{M}]`.
+#[inline]
+pub fn is_o200k_lower(c: char) -> bool {
+    in_ranges(c as u32, tables::O200K_LOWER)
+}
 
 #[cfg(test)]
 mod tests {
@@ -55,8 +65,23 @@ mod tests {
         assert!(!is_whitespace('a'));
     }
     #[test]
+    fn o200k_classes() {
+        // 'A' is Lu -> upper only; 'a' is Ll -> lower only; '9' neither.
+        assert!(is_o200k_upper('A') && !is_o200k_lower('A'));
+        assert!(is_o200k_lower('a') && !is_o200k_upper('a'));
+        assert!(!is_o200k_upper('9') && !is_o200k_lower('9'));
+        // combining mark (U+0301) is in BOTH classes.
+        assert!(is_o200k_upper('\u{0301}') && is_o200k_lower('\u{0301}'));
+    }
+    #[test]
     fn ranges_are_sorted_nonoverlapping() {
-        for t in [tables::LETTER, tables::NUMBER, tables::WHITE_SPACE] {
+        for t in [
+            tables::LETTER,
+            tables::NUMBER,
+            tables::WHITE_SPACE,
+            tables::O200K_UPPER,
+            tables::O200K_LOWER,
+        ] {
             for w in t.windows(2) {
                 assert!(w[0].1 < w[1].0, "ranges must be sorted & disjoint");
             }

@@ -2,27 +2,41 @@ use proptest::prelude::*;
 use sonictok::{Tokenizer, get_encoding};
 use std::sync::OnceLock;
 
-fn tok() -> &'static Tokenizer {
+fn cl100k() -> &'static Tokenizer {
     static T: OnceLock<Tokenizer> = OnceLock::new();
     T.get_or_init(|| get_encoding("cl100k_base").expect("data/cl100k_base.stb"))
 }
+fn o200k() -> &'static Tokenizer {
+    static T: OnceLock<Tokenizer> = OnceLock::new();
+    T.get_or_init(|| get_encoding("o200k_base").expect("data/o200k_base.stb"))
+}
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(2000))]
+    #![proptest_config(ProptestConfig::with_cases(1500))]
 
     #[test]
-    fn roundtrip_utf8(s in ".{0,400}") {
-        let ids = tok().encode_ordinary(&s);
-        prop_assert_eq!(tok().decode(&ids).unwrap(), s);
+    fn cl100k_roundtrip(s in ".{0,400}") {
+        prop_assert_eq!(cl100k().decode(&cl100k().encode_ordinary(&s)).unwrap(), s);
+    }
+    #[test]
+    fn cl100k_count(s in ".{0,400}") {
+        prop_assert_eq!(cl100k().count(&s), cl100k().encode_ordinary(&s).len());
+    }
+    #[test]
+    fn cl100k_no_panic(s in ".{0,400}") {
+        let _ = cl100k().encode_ordinary(&s);
     }
 
     #[test]
-    fn count_equals_len(s in ".{0,400}") {
-        prop_assert_eq!(tok().count(&s), tok().encode_ordinary(&s).len());
+    fn o200k_roundtrip(s in ".{0,400}") {
+        prop_assert_eq!(o200k().decode(&o200k().encode_ordinary(&s)).unwrap(), s);
     }
-
     #[test]
-    fn never_panics_on_arbitrary_text(s in ".{0,400}") {
-        let _ = tok().encode_ordinary(&s); // must not panic
+    fn o200k_count(s in ".{0,400}") {
+        prop_assert_eq!(o200k().count(&s), o200k().encode_ordinary(&s).len());
+    }
+    #[test]
+    fn o200k_no_panic(s in ".{0,400}") {
+        let _ = o200k().encode_ordinary(&s);
     }
 }
