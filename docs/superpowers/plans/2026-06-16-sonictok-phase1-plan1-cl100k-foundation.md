@@ -293,7 +293,7 @@ mod tests {
 ```rust
 // crates/sonictok-core/src/lib.rs
 //! sonictok-core: dependency-free, allocation-light exact BPE engine.
-#![forbid(unsafe_code)] // Rung 0/1 are safe; relaxed (with documented invariants) at Rung 2.
+#![deny(unsafe_op_in_unsafe_fn)] // the only unsafe is pretok::char_at (documented SAFETY).
 
 pub mod rank;
 pub use rank::{Rank, RankLookup, RankMap, RANK_MAX};
@@ -699,8 +699,9 @@ impl Default for Cl100kPretokenizer { fn default() -> Self { Self::new() } }
 /// callers feeding valid UTF-8. Returns (char, byte_len).
 #[inline]
 fn char_at(input: &[u8], i: usize) -> (char, usize) {
-    // SAFETY-FREE: we only feed valid UTF-8 (from &str). For robustness we
-    // decode manually and treat invalid as a single replacement-width byte.
+    // SAFETY: `input` always originates from a `&str` (encode operates on
+    // `&str`), and every alternative advances by whole UTF-8 char widths, so `i`
+    // is always on a char boundary; the tail is therefore valid UTF-8.
     let s = unsafe { std::str::from_utf8_unchecked(&input[i..]) };
     match s.chars().next() {
         Some(c) => (c, c.len_utf8()),
@@ -790,12 +791,8 @@ impl Pretokenizer for Cl100kPretokenizer {
             }
         }
 
-        // Alt 5: \s*[\r\n]+   (whitespace run that contains at least one CR/LF at its end)
+        // Alt 5: \s*[\r\n]+  — a whitespace prefix that ends at the last CR/LF.
         if is_whitespace(c0) {
-            // find maximal \s* then require [\r\n]+; emulate by scanning ws, then
-            // checking the regex semantics: \s*[\r\n]+ is greedy ws ending in newline(s).
-            let mut k = start;
-            // greedily take whitespace, but remember the last index where a [\r\n]+ run ends
             let mut last_nl_end: Option<usize> = None;
             let mut t = start;
             while t < input.len() {
@@ -803,45 +800,33 @@ impl Pretokenizer for Cl100kPretokenizer {
                 if !is_whitespace(ct) { break; }
                 t += wt;
                 if is_cr_or_lf(ct) {
-                    // extend through a contiguous [\r\n]+ run
-                    let mut u = t;
-                    let mut last = t;
-                    // we already consumed one nl ending at t; continue consuming nl
-                    let mut back = t;
-                    // include any following CR/LF
-                    while u < input.len() {
-                        let (cu, wu) = char_at(input, u);
-                        if is_cr_or_lf(cu) { u += wu; last = u; } else { break; }
+                    // extend over a contiguous CR/LF run
+                    while t < input.len() {
+                        let (cu, wu) = char_at(input, t);
+                        if is_cr_or_lf(cu) { t += wu; } else { break; }
                     }
-                    let _ = back; let _ = last;
-                    last_nl_end = Some(u);
-                    t = u;
+                    last_nl_end = Some(t);
                 }
             }
             if let Some(end) = last_nl_end {
-                let _ = k;
                 self.pos = end;
                 return Some((start, end));
             }
-            // Alt 6: \s+(?!\S)  — whitespace not followed by a non-space. With a
-            // maximal ws run, the char after it is EOS or non-ws. If non-ws,
-            // leave the LAST ws char for the following word (alt 2/4); else take all.
+            // Alt 6: \s+(?!\S)  / Alt 7: \s+. Take the maximal whitespace run; if a
+            // non-space follows, leave its LAST whitespace char to join the word.
             let mut end = start;
             while end < input.len() {
                 let (ce, we) = char_at(input, end);
                 if is_whitespace(ce) { end += we; } else { break; }
             }
             if end < input.len() {
-                // followed by non-space: drop the final ws char (one char back)
-                let (_, wlast) = char_at(input, prev_char_start(input, end));
-                let kept = end - wlast;
-                if kept > start {
-                    self.pos = kept;
-                    return Some((start, kept));
+                let last_start = prev_char_start(input, end);
+                if last_start > start {
+                    self.pos = last_start;
+                    return Some((start, last_start));
                 }
-                // single ws before non-space: alt 6 fails; alt 7 takes it
+                // single whitespace before a non-space: alt 6 fails, alt 7 takes it
             }
-            // Alt 7: \s+
             self.pos = end;
             return Some((start, end));
         }
@@ -856,6 +841,7 @@ impl Pretokenizer for Cl100kPretokenizer {
 /// Start byte index of the char immediately before byte index `end`.
 #[inline]
 fn prev_char_start(input: &[u8], end: usize) -> usize {
+    if end == 0 { return 0; }
     let mut i = end - 1;
     while i > 0 && (input[i] & 0xC0) == 0x80 { i -= 1; }
     i
@@ -931,14 +917,8 @@ mod tests {
 pub mod pretok;
 ```
 
-`char_at` uses `unsafe`; relax the crate attribute to allow it with justification:
-
-```rust
-// change the top of crates/sonictok-core/src/lib.rs
-#![deny(unsafe_op_in_unsafe_fn)]
-// (remove #![forbid(unsafe_code)] — pretok::char_at uses from_utf8_unchecked on
-//  validated &str input; documented at the call site.)
-```
+(No crate-attribute change needed: Task 1 already set `#![deny(unsafe_op_in_unsafe_fn)]`,
+and `char_at`'s single `unsafe` block carries its SAFETY justification.)
 
 - [ ] Step 4: Run tests
 
@@ -1138,7 +1118,7 @@ impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, 
 
     /// encode_with_special: all specials recognized -> their ids.
     pub fn encode_with_special_into(&self, text: &str, out: &mut Vec<Rank>) {
-        let allow_all = |_id| true;
+        let allow_all = |_id: Rank| true;
         self.encode_special_inner(text.as_bytes(), &allow_all, out).expect("all allowed");
     }
 
@@ -1164,11 +1144,9 @@ impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, 
             self.encode_ordinary_bytes(bytes, out);
             return Ok(());
         }
-        // First: any disallowed special literally present is an error.
-        let any = |_id| true;
-        if let Some((s, e, _id)) = self.specials.find_next(bytes, 0, &|id| !allowed(id) && true) {
-            // a disallowed special occurs in the text
-            let _ = any;
+        // tiktoken semantics: if any DISALLOWED special appears literally, error
+        // (find_next returns the earliest such occurrence).
+        if let Some((s, e, _id)) = self.specials.find_next(bytes, 0, &|id: Rank| !allowed(id)) {
             return Err(DisallowedSpecial { token: bytes[s..e].to_vec(), offset: s });
         }
         // Now split on allowed specials and encode ordinary spans between.
@@ -1890,11 +1868,12 @@ pub struct Tokenizer {
     vocab_size: usize,
 }
 
-// SAFETY: all fields are immutable after construction.
-unsafe impl Send for Tokenizer {}
-unsafe impl Sync for Tokenizer {}
-
-const MAX_INPUT: usize = 4 * 1024 * 1024 * 1024; // 4 GiB
+// Tokenizer is automatically Send + Sync (all fields are Send + Sync and
+// immutable after construction). Assert it at compile time — no unsafe needed.
+const _: fn() = || {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Tokenizer>();
+};
 
 impl Tokenizer {
     pub fn from_blob(blob: VocabBlob) -> Self {
@@ -1975,8 +1954,8 @@ impl Tokenizer {
 
     fn allow_pred(&self, allowed: Allowed<'_>) -> Box<dyn Fn(Rank) -> bool + '_> {
         match allowed {
-            Allowed::All => Box::new(|_| true),
-            Allowed::None => Box::new(|_| false),
+            Allowed::All => Box::new(|_: Rank| true),
+            Allowed::None => Box::new(|_: Rank| false),
             Allowed::Set(set) => {
                 let ids: HashSet<Rank> = self
                     .specials
@@ -1987,12 +1966,6 @@ impl Tokenizer {
                 Box::new(move |id| ids.contains(&id))
             }
         }
-    }
-
-    fn _max_input_guard(len: usize) -> Result<(), Error> {
-        let _ = MAX_INPUT;
-        let _ = len;
-        Ok(())
     }
 }
 
@@ -2005,9 +1978,10 @@ pub fn get_encoding(name: &str) -> Result<Tokenizer, Error> {
 }
 ```
 
-> Note: `MAX_INPUT` enforcement and `encode_ordinary_into` reuse paths are
-> stubbed minimally here; the 4 GiB guard is exercised in a later optimization
-> plan where the hot path is finalized. For Plan 1, inputs are well under the cap.
+> Note: the 4 GiB-per-call input cap from the spec is deferred to the
+> optimization plan where the hot path is finalized (Plan 1 corpora are ~1 MB).
+> `Tokenizer` is `Send + Sync` automatically (asserted at compile time above) —
+> no `unsafe impl` is needed.
 
 - [ ] Step 4: Add a smoke test against tiktoken-known ids
 
@@ -2274,28 +2248,31 @@ until this passes. This is the canonical correctness gate.
 ```rust
 // crates/sonictok/tests/proptest.rs
 use proptest::prelude::*;
-use sonictok::get_encoding;
+use sonictok::{get_encoding, Tokenizer};
+use std::sync::OnceLock;
+
+fn tok() -> &'static Tokenizer {
+    static T: OnceLock<Tokenizer> = OnceLock::new();
+    T.get_or_init(|| get_encoding("cl100k_base").expect("data/cl100k_base.stb"))
+}
 
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(2000))]
 
     #[test]
     fn roundtrip_utf8(s in ".{0,400}") {
-        let t = get_encoding("cl100k_base").unwrap();
-        let ids = t.encode_ordinary(&s);
-        prop_assert_eq!(t.decode(&ids), s);
+        let ids = tok().encode_ordinary(&s);
+        prop_assert_eq!(tok().decode(&ids), s);
     }
 
     #[test]
     fn count_equals_len(s in ".{0,400}") {
-        let t = get_encoding("cl100k_base").unwrap();
-        prop_assert_eq!(t.count(&s), t.encode_ordinary(&s).len());
+        prop_assert_eq!(tok().count(&s), tok().encode_ordinary(&s).len());
     }
 
     #[test]
     fn never_panics_on_arbitrary_text(s in ".{0,400}") {
-        let t = get_encoding("cl100k_base").unwrap();
-        let _ = t.encode_ordinary(&s); // must not panic
+        let _ = tok().encode_ordinary(&s); // must not panic
     }
 }
 ```
