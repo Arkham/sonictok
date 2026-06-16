@@ -23,7 +23,7 @@ impl Oracle {
             let m = m.unwrap();
             debug_assert_eq!(m.start(), last, "regex left a gap");
             last = m.end();
-            byte_pair_encode(text[m.start()..m.end()].as_bytes(), &self.ranks, &mut out);
+            byte_pair_encode(&text.as_bytes()[m.start()..m.end()], &self.ranks, &mut out);
         }
         out
     }
