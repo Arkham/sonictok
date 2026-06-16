@@ -51,3 +51,18 @@ def test_harmony_specials():
     assert enc.n_vocab == 201088
     ids = enc.encode_with_special("<|start|>hi<|end|>")
     assert ids[0] == 200006 and ids[-1] == 200007
+
+
+def test_qwen3_nfc_roundtrip():
+    enc = sonictok.get_encoding("qwen3")
+    assert enc.name == "qwen3" and enc.n_vocab == 151665
+    # single-digit numbers
+    assert len(enc.encode_ordinary("1234")) == 4
+    # NFC: decomposed input normalizes (decode returns the NFC form)
+    assert enc.decode(enc.encode_ordinary("cafe\u0301")) == "caf\u00e9"
+
+
+def test_llama3_loads():
+    enc = sonictok.get_encoding("llama3")
+    assert enc.name == "llama3" and enc.n_vocab == 128256
+    assert enc.decode(enc.encode_ordinary("hello world")) == "hello world"

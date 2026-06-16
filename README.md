@@ -2,10 +2,12 @@
 
 Fast, exact BPE tokenizer in Rust. Byte-identical to tiktoken.
 
-**Status:** `cl100k_base`, `o200k_base`, `o200k_harmony` — all byte-exact vs
-tiktoken and fully tested. Rust API, parallel batch, a stable C ABI, and Python
-bindings. ~87 MiB/s single-thread, ~526 MiB/s batch (M3 Pro); see
-`bench/BASELINE.md`.
+**Status:** five encodings, all byte-exact and fully tested — `cl100k_base`,
+`o200k_base`, `o200k_harmony` (vs tiktoken), `qwen3` (vs HF tokenizers, incl. NFC
+normalization), and `llama3` (vs HF tokenizers). Linear-time backtracking BPE
+(the `bpe`-crate algorithm) + 2-byte trie + fused product machines. Rust API,
+parallel batch, a stable C ABI, and Python bindings. **~129 MiB/s single-thread
+(~90% of quicktok-native), ~720 MiB/s batch (M3 Pro)** — see `bench/BASELINE.md`.
 
 ### Rust
 
@@ -23,10 +25,17 @@ cd bindings/python && maturin develop --release   # build + install into venv
 ```
 ```python
 import sonictok
-enc = sonictok.get_encoding("cl100k_base")
+enc = sonictok.get_encoding("cl100k_base")  # or o200k_base/o200k_harmony/qwen3/llama3
 enc.encode_ordinary("hello world")          # [15339, 1917]
 enc.encode("a<|endoftext|>", allowed_special="all")
 enc.encode_batch(["doc one", "doc two"])    # parallel, GIL released
+```
+
+Regenerate qwen3/llama3 data + fixtures (needs `pip install tokenizers`):
+```
+python tools/export_qwen3.py  && cargo run -p xtask -- build-data qwen3
+python tools/export_llama3.py && cargo run -p xtask -- build-data llama3
+python tools/gen_fixtures_qwen3.py && python tools/gen_fixtures_llama3.py
 ```
 
 ### C / any language (stable ABI)
