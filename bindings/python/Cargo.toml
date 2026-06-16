@@ -1,0 +1,13 @@
+[package]
+name = "sonictok-py"
+version = "0.0.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "sonictok"
+crate-type = ["cdylib"]
+
+[dependencies]
+api = { package = "sonictok", path = "../../crates/sonictok" }
+pyo3 = { version = "0.22", features = ["abi3-py39", "extension-module"] }

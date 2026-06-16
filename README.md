@@ -2,13 +2,37 @@
 
 Fast, exact BPE tokenizer in Rust. Byte-identical to tiktoken.
 
-**Phase 1, Plan 1 status:** `cl100k_base` exact + tested (Rung 0/1, pre-optimization).
+**Status:** `cl100k_base`, `o200k_base`, `o200k_harmony` — all byte-exact vs
+tiktoken and fully tested. Rust API, parallel batch, a stable C ABI, and Python
+bindings. ~87 MiB/s single-thread, ~526 MiB/s batch (M3 Pro); see
+`bench/BASELINE.md`.
+
+### Rust
 
 ```rust
 let enc = sonictok::get_encoding("cl100k_base")?;
 let ids = enc.encode_ordinary("hello world"); // [15339, 1917]
 let text = enc.decode(&ids)?;
+let batch = enc.encode_batch(&["doc one", "doc two"]); // parallel (rayon)
 ```
+
+### Python (tiktoken-style)
+
+```sh
+cd bindings/python && maturin develop --release   # build + install into venv
+```
+```python
+import sonictok
+enc = sonictok.get_encoding("cl100k_base")
+enc.encode_ordinary("hello world")          # [15339, 1917]
+enc.encode("a<|endoftext|>", allowed_special="all")
+enc.encode_batch(["doc one", "doc two"])    # parallel, GIL released
+```
+
+### C / any language (stable ABI)
+
+`crates/sonictok-cabi` builds `libsonictok.{a,dylib}` + `include/sonictok.h`.
+Smoke-test it: `cargo run -p xtask -- test-cabi`.
 
 ## Correctness
 
