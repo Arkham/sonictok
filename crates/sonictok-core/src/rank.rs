@@ -12,10 +12,10 @@ pub trait RankLookup {
     fn get(&self, key: &[u8]) -> Option<Rank>;
 }
 
-/// Rung 0/1 vocab: owned byte strings -> rank.
+/// Vocab: owned byte strings -> rank, over hashbrown + a cheap FxHash.
 #[derive(Debug, Clone, Default)]
 pub struct RankMap {
-    map: std::collections::HashMap<Vec<u8>, Rank>,
+    map: crate::hash::FxHashMap<Vec<u8>, Rank>,
 }
 
 impl RankMap {

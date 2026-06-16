@@ -3,6 +3,7 @@
 
 pub mod bpe;
 pub mod encoding;
+pub mod hash;
 pub mod pretok;
 pub mod rank;
 pub mod specials;
