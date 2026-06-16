@@ -4,11 +4,14 @@
   "encodings": [
     "cl100k_base",
     "o200k_base",
-    "o200k_harmony"
+    "o200k_harmony",
+    "qwen3"
   ],
   "content_sha256": {
     "cl100k_base": "a7faf3e11c281eaeaa3579fef3077b39af2f36b107270ab5455b5adf526a8373",
     "o200k_base": "5de9b54cbe64a998f4d879a570313c103a7e856196c578457e289babb1e561dc",
     "o200k_harmony": "8b654b8a8606676cc3173ebd85bba725b8446cb92e45ad5c4ceb1cafa2ab3c3f"
-  }
+  },
+  "qwen3_generated_at": "2026-06-16T21:13:31.352859+00:00",
+  "qwen3_content_sha256": "7a098c206ae5d4c51ab783b222f717b1191e14d0938d38452209225065a76060"
 }

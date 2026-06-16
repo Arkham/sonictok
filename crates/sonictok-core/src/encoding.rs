@@ -50,7 +50,8 @@ impl<'a, D: Decoder> Engine<'a, D> {
 
     fn encode_ordinary_bytes(&self, bytes: &[u8], out: &mut Vec<Rank>) {
         match self.grammar {
-            Grammar::Cl100k => self.encode_cl100k_fused(bytes, out),
+            Grammar::Cl100k => self.encode_cl100k_fused(bytes, out, 3),
+            Grammar::Qwen => self.encode_cl100k_fused(bytes, out, 1),
             Grammar::O200k => self.encode_o200k_fused(bytes, out),
         }
     }
@@ -262,7 +263,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
     /// Fused single-pass cl100k product machine: pretok boundaries + token
     /// emission in one loop over ASCII bytes; any non-ASCII contact falls back
     /// to the exact scalar scanner for one piece (so output is byte-exact).
-    fn encode_cl100k_fused(&self, t: &[u8], out: &mut Vec<Rank>) {
+    fn encode_cl100k_fused(&self, t: &[u8], out: &mut Vec<Rank>, num_max: usize) {
         use crate::pretok::cl100k::piece_end;
         let l = t.len();
         let mut p = 0usize;
@@ -323,15 +324,15 @@ impl<'a, D: Decoder> Engine<'a, D> {
                         adv = we - p;
                         break 'ascii;
                     }
-                    // Alt 3: \p{N}{1,3}
+                    // Alt 3: \p{N}{1,num_max}
                     if a_dig(b0) {
                         let mut q = p + 1;
                         let mut c = 1;
-                        while q < l && c < 3 && a_dig(t[q]) {
+                        while q < l && c < num_max && a_dig(t[q]) {
                             q += 1;
                             c += 1;
                         }
-                        if c < 3 && q < l && t[q] >= 0x80 {
+                        if c < num_max && q < l && t[q] >= 0x80 {
                             fb = true;
                             break 'ascii;
                         }
@@ -390,7 +391,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                 }
             }
             if fb {
-                let end = piece_end(t, p);
+                let end = piece_end(t, p, num_max);
                 self.vocab.encode(&t[p..end], out);
                 p = end;
             } else {

@@ -54,10 +54,10 @@ pub(crate) fn match_contraction(input: &[u8], at: usize) -> Option<usize> {
 /// Alt: `\p{N}{1,3}` starting at `start` (caller checked the first char is a
 /// number). Returns the end index.
 #[inline]
-pub(crate) fn scan_number(input: &[u8], start: usize) -> usize {
+pub(crate) fn scan_number(input: &[u8], start: usize, max: usize) -> usize {
     let mut k = start;
     let mut count = 0;
-    while k < input.len() && count < 3 {
+    while k < input.len() && count < max {
         let (ck, wk) = char_at(input, k);
         if crate::unicode::is_number(ck) {
             k += wk;

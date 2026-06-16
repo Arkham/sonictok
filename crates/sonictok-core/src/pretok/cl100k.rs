@@ -7,14 +7,24 @@ use crate::pretok::common::{
 };
 use crate::unicode::{is_letter, is_number, is_whitespace};
 
-#[derive(Default)]
 pub struct Cl100kPretokenizer {
     pos: usize,
+    num_max: usize, // \p{N}{1,num_max}: 3 for cl100k, 1 for qwen
+}
+
+impl Default for Cl100kPretokenizer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Cl100kPretokenizer {
     pub fn new() -> Self {
-        Self { pos: 0 }
+        Self { pos: 0, num_max: 3 }
+    }
+    /// Qwen variant: single-digit numbers.
+    pub fn qwen() -> Self {
+        Self { pos: 0, num_max: 1 }
     }
     pub fn reset(&mut self) {
         self.pos = 0;
@@ -22,7 +32,7 @@ impl Cl100kPretokenizer {
 }
 
 /// End index of the cl100k piece starting at `start` (scalar; handles Unicode).
-pub fn piece_end(input: &[u8], start: usize) -> usize {
+pub fn piece_end(input: &[u8], start: usize, num_max: usize) -> usize {
     let (c0, w0) = char_at(input, start);
 
     // Alt 1: (?i:'s|'t|'re|'ve|'m|'ll|'d)
@@ -60,9 +70,9 @@ pub fn piece_end(input: &[u8], start: usize) -> usize {
         }
     }
 
-    // Alt 3: \p{N}{1,3}
+    // Alt 3: \p{N}{1,num_max}
     if is_number(c0) {
-        return scan_number(input, start);
+        return scan_number(input, start, num_max);
     }
 
     // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n]*
@@ -85,7 +95,7 @@ impl Pretokenizer for Cl100kPretokenizer {
         if start >= input.len() {
             return None;
         }
-        self.pos = piece_end(input, start);
+        self.pos = piece_end(input, start, self.num_max);
         Some((start, self.pos))
     }
 }

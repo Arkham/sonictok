@@ -65,3 +65,8 @@ fn o200k_base_fixtures_match() {
 fn o200k_harmony_fixtures_match() {
     check_encoding("o200k_harmony");
 }
+
+#[test]
+fn qwen3_fixtures_match() {
+    check_encoding("qwen3");
+}

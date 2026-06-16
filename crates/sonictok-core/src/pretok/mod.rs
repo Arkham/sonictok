@@ -15,6 +15,8 @@ pub trait Pretokenizer {
 pub enum Grammar {
     Cl100k,
     O200k,
+    /// cl100k grammar but single-digit numbers (\p{N}); used by qwen3.
+    Qwen,
 }
 
 /// A grammar-dispatched scanner; the engine constructs the right one per call.
@@ -27,6 +29,7 @@ impl Scanner {
     pub fn new(g: Grammar) -> Self {
         match g {
             Grammar::Cl100k => Scanner::Cl100k(cl100k::Cl100kPretokenizer::new()),
+            Grammar::Qwen => Scanner::Cl100k(cl100k::Cl100kPretokenizer::qwen()),
             Grammar::O200k => Scanner::O200k(o200k::O200kPretokenizer::new()),
         }
     }

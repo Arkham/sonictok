@@ -4,7 +4,7 @@ pub enum Error {
     Data(#[from] sonictok_data::DataError),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("unsupported encoding: {0} (have: cl100k_base, o200k_base, o200k_harmony)")]
+    #[error("unsupported encoding: {0} (have: cl100k_base, o200k_base, o200k_harmony, qwen3)")]
     UnsupportedEncoding(String),
 }
 

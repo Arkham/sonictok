@@ -1,0 +1,305 @@
+[
+{
+"mode": "ordinary",
+"ids": [],
+"encoding": "qwen3",
+"input": ""
+},
+{
+"mode": "ordinary",
+"ids": [
+220
+],
+"encoding": "qwen3",
+"input": " "
+},
+{
+"mode": "ordinary",
+"ids": [
+256
+],
+"encoding": "qwen3",
+"input": "  "
+},
+{
+"mode": "ordinary",
+"ids": [
+271
+],
+"encoding": "qwen3",
+"input": "\n\n"
+},
+{
+"mode": "ordinary",
+"ids": [
+14990,
+1879
+],
+"encoding": "qwen3",
+"input": "hello world"
+},
+{
+"mode": "ordinary",
+"ids": [
+785,
+3974,
+13876,
+38835,
+34208,
+916,
+279,
+15678,
+5562,
+13
+],
+"encoding": "qwen3",
+"input": "The quick brown fox jumps over the lazy dog."
+},
+{
+"mode": "ordinary",
+"ids": [
+40,
+2776,
+1513,
+944,
+2765,
+944,
+566,
+3278,
+807,
+3003
+],
+"encoding": "qwen3",
+"input": "I'm don't won't he'll they've"
+},
+{
+"mode": "ordinary",
+"ids": [
+16,
+220,
+16,
+17,
+220,
+16,
+17,
+18,
+220,
+16,
+17,
+18,
+19,
+220,
+15,
+15,
+22,
+220,
+19,
+17
+],
+"encoding": "qwen3",
+"input": "1 12 123 1234 007 42"
+},
+{
+"mode": "ordinary",
+"ids": [
+72139,
+19096,
+49152,
+4207,
+61044,
+4526
+],
+"encoding": "qwen3",
+"input": "snake_case camelCase HTTPSConnection"
+},
+{
+"mode": "ordinary",
+"ids": [
+750,
+282,
+2075,
+1648,
+470,
+856,
+10,
+16,
+220,
+671,
+3980
+],
+"encoding": "qwen3",
+"input": "def f(x): return x+1  # comment"
+},
+{
+"mode": "ordinary",
+"ids": [
+2428,
+1110,
+8687,
+905,
+50976,
+43782,
+28,
+16
+],
+"encoding": "qwen3",
+"input": "https://example.com/path?q=1"
+},
+{
+"mode": "ordinary",
+"ids": [
+101059,
+102819,
+15767,
+56833,
+61803,
+70534,
+72858,
+16744,
+108704,
+130092,
+31079
+],
+"encoding": "qwen3",
+"input": "日本語のテキスト 中文文本 한국어"
+},
+{
+"mode": "ordinary",
+"ids": [
+37523,
+11162,
+99,
+232,
+145836,
+2997
+],
+"encoding": "qwen3",
+"input": "emoji 🦊🚀 family"
+},
+{
+"mode": "ordinary",
+"ids": [
+924,
+58858,
+94880,
+586
+],
+"encoding": "qwen3",
+"input": "café naïve"
+},
+{
+"mode": "ordinary",
+"ids": [
+144044,
+86089,
+117,
+102,
+42812
+],
+"encoding": "qwen3",
+"input": "Å ṩ Á"
+},
+{
+"mode": "ordinary",
+"ids": [
+144044,
+968,
+495,
+85584
+],
+"encoding": "qwen3",
+"input": "Ångström"
+},
+{
+"mode": "ordinary",
+"ids": [
+376,
+14277,
+12621,
+262
+],
+"encoding": "qwen3",
+"input": "trailing spaces   "
+},
+{
+"mode": "with_special",
+"ids": [
+151643,
+5099,
+220,
+151644
+],
+"encoding": "qwen3",
+"input": "<|endoftext|> mid <|im_start|>"
+},
+{
+"mode": "ordinary",
+"ids": [
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+69440,
+28458
+],
+"encoding": "qwen3",
+"input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}
+]

@@ -138,7 +138,7 @@ pub fn piece_end(input: &[u8], start: usize) -> usize {
     }
     // Alt 3: \p{N}{1,3}
     if is_number(c0) {
-        return scan_number(input, start);
+        return scan_number(input, start, 3);
     }
     // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n/]*   (note: '/' in the trailing class)
     if let Some(end) = scan_punct(input, start, true) {

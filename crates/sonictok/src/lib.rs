@@ -18,6 +18,7 @@ fn grammar_for(encoding: &str) -> Option<Grammar> {
     match encoding {
         "cl100k_base" => Some(Grammar::Cl100k),
         "o200k_base" | "o200k_harmony" => Some(Grammar::O200k),
+        "qwen3" => Some(Grammar::Qwen),
         _ => None,
     }
 }
@@ -93,24 +94,43 @@ impl Tokenizer {
         Engine::new(&self.vocab, &self.decoder, &self.specials, self.grammar)
     }
 
+    /// Normalize input per the encoding's normalizer (qwen3 = NFC). Clean input
+    /// pays only a quick scan; only non-NFC text is rewritten. HF tokenizers uses
+    /// the same `unicode-normalization` crate, so this matches byte-for-byte.
+    fn normalize<'a>(&self, text: &'a str) -> std::borrow::Cow<'a, str> {
+        use unicode_normalization::{IsNormalized, UnicodeNormalization, is_nfc_quick};
+        if self.grammar == Grammar::Qwen {
+            match is_nfc_quick(text.chars()) {
+                IsNormalized::Yes => std::borrow::Cow::Borrowed(text),
+                _ => std::borrow::Cow::Owned(text.nfc().collect()),
+            }
+        } else {
+            std::borrow::Cow::Borrowed(text)
+        }
+    }
+
     pub fn encode_ordinary(&self, text: &str) -> Vec<u32> {
+        let text = self.normalize(text);
         let mut out = Vec::with_capacity(text.len() / 3 + 1);
-        self.engine().encode_ordinary_into(text, &mut out);
+        self.engine().encode_ordinary_into(&text, &mut out);
         out
     }
     pub fn encode_ordinary_into(&self, text: &str, out: &mut Vec<u32>) {
-        self.engine().encode_ordinary_into(text, out);
+        let text = self.normalize(text);
+        self.engine().encode_ordinary_into(&text, out);
     }
     pub fn encode_with_special(&self, text: &str) -> Vec<u32> {
+        let text = self.normalize(text);
         let mut out = Vec::with_capacity(text.len() / 3 + 1);
-        self.engine().encode_with_special_into(text, &mut out);
+        self.engine().encode_with_special_into(&text, &mut out);
         out
     }
     pub fn encode(&self, text: &str, allowed: Allowed<'_>) -> Result<Vec<u32>, EncodeError> {
+        let text = self.normalize(text);
         let mut out = Vec::with_capacity(text.len() / 3 + 1);
         let pred = self.allow_pred(allowed);
         self.engine()
-            .encode_into(text, &pred, &mut out)
+            .encode_into(&text, &pred, &mut out)
             .map_err(|e| EncodeError {
                 token: String::from_utf8_lossy(&e.token).into_owned(),
                 offset: e.offset,
@@ -118,7 +138,8 @@ impl Tokenizer {
         Ok(out)
     }
     pub fn count(&self, text: &str) -> usize {
-        self.engine().count(text)
+        let text = self.normalize(text);
+        self.engine().count(&text)
     }
 
     /// Encode many documents into one flat id buffer plus offsets:
@@ -228,6 +249,10 @@ fn embedded_blob(name: &str) -> Option<&'static [u8]> {
         "o200k_harmony" => Some(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../data/o200k_harmony.stb"
+        ))),
+        "qwen3" => Some(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/qwen3.stb"
         ))),
         _ => None,
     }
