@@ -5,3 +5,4 @@ Cargo.lock.orig
 
 # local quicktok reference checkout (clone via: git clone --depth 1 https://github.com/dmatth1/quicktok bench/quicktok-ref)
 /bench/quicktok-ref/
+/.venv/
