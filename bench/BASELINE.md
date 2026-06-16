@@ -41,6 +41,15 @@ The `bench/quicktok-ref/` checkout is git-ignored. sonictok's own comparative
 harness (Plan 2) builds quicktok the same way and runs both encoders on this
 exact corpus, verifying token-for-token equality before timing.
 
+## sonictok progress (single-thread, this machine, `bench/corpus.txt`)
+
+| Stage | cl100k MB/s | vs quicktok | Notes |
+|-------|------------:|------------:|-------|
+| Rung 0/1 (HashMap, scalar pretok) | ~35.8 | ~0.22× | byte-exact; matches bpe-openai, ~2.5× tiktoken |
+
+Captured via `cargo bench -p sonictok --bench encode` (Plan 1 complete). The
+optimization ladder (Plans 3+) climbs from here toward the target below.
+
 ## sonictok targets (single-thread, this machine)
 
 - **Checkpoint A** — beat every other exact tokenizer (≥ bpe-openai class).
