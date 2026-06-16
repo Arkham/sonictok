@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = ["crates/sonictok-core", "crates/sonictok-data", "crates/sonictok", "crates/sonictok-testkit", "xtask"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/arkham/sonictok"
+
+[workspace.dependencies]
+sonictok-core = { path = "crates/sonictok-core" }
+sonictok-data = { path = "crates/sonictok-data" }
+sonictok-testkit = { path = "crates/sonictok-testkit" }
+thiserror = "2"
+proptest = "1"
+fancy-regex = "0.14"
+criterion = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+[profile.bench]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
