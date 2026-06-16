@@ -95,10 +95,12 @@ impl Tokenizer {
     pub fn encode(&self, text: &str, allowed: Allowed<'_>) -> Result<Vec<u32>, EncodeError> {
         let mut out = Vec::with_capacity(text.len() / 3 + 1);
         let pred = self.allow_pred(allowed);
-        self.engine().encode_into(text, &pred, &mut out).map_err(|e| EncodeError {
-            token: String::from_utf8_lossy(&e.token).into_owned(),
-            offset: e.offset,
-        })?;
+        self.engine()
+            .encode_into(text, &pred, &mut out)
+            .map_err(|e| EncodeError {
+                token: String::from_utf8_lossy(&e.token).into_owned(),
+                offset: e.offset,
+            })?;
         Ok(out)
     }
     pub fn count(&self, text: &str) -> usize {
@@ -111,7 +113,9 @@ impl Tokenizer {
     }
     pub fn decode_bytes(&self, ids: &[u32]) -> Result<Vec<u8>, DecodeError> {
         let mut out = Vec::with_capacity(ids.len() * 3);
-        self.engine().decode_into(ids, &mut out).map_err(|e| DecodeError(e.0))?;
+        self.engine()
+            .decode_into(ids, &mut out)
+            .map_err(|e| DecodeError(e.0))?;
         Ok(out)
     }
 

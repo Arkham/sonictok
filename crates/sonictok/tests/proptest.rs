@@ -1,5 +1,5 @@
 use proptest::prelude::*;
-use sonictok::{get_encoding, Tokenizer};
+use sonictok::{Tokenizer, get_encoding};
 use std::sync::OnceLock;
 
 fn tok() -> &'static Tokenizer {

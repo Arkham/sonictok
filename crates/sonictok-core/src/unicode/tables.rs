@@ -849,4 +849,3 @@ pub static WHITE_SPACE: &[(u32, u32)] = &[
     (0x205F, 0x205F),
     (0x3000, 0x3000),
 ];
-

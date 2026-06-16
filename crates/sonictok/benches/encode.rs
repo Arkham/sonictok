@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use sonictok::get_encoding;
 
 fn bench_encode(c: &mut Criterion) {

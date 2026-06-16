@@ -78,7 +78,10 @@ impl VocabBlob {
         let body = &buf[r.pos..];
         let actual = fnv1a(body);
         if actual != checksum {
-            return Err(DataError::Checksum { expected: checksum, actual });
+            return Err(DataError::Checksum {
+                expected: checksum,
+                actual,
+            });
         }
         let name_len = r.u16()? as usize;
         let name = String::from_utf8(r.take(name_len)?.to_vec())
@@ -100,7 +103,12 @@ impl VocabBlob {
             let id = r.u32()?;
             specials.push((b, id));
         }
-        Ok(Self { name, max_id, ranks, specials })
+        Ok(Self {
+            name,
+            max_id,
+            ranks,
+            specials,
+        })
     }
 }
 
@@ -110,7 +118,10 @@ struct Reader<'a> {
 }
 impl<'a> Reader<'a> {
     fn take(&mut self, n: usize) -> Result<&'a [u8], DataError> {
-        let end = self.pos.checked_add(n).ok_or(DataError::Corrupt("overflow"))?;
+        let end = self
+            .pos
+            .checked_add(n)
+            .ok_or(DataError::Corrupt("overflow"))?;
         if end > self.buf.len() {
             return Err(DataError::Corrupt("truncated"));
         }
@@ -157,7 +168,10 @@ mod tests {
     fn bad_magic() {
         let mut bytes = sample().to_bytes();
         bytes[0] = b'X';
-        assert!(matches!(VocabBlob::from_bytes(&bytes), Err(DataError::BadMagic)));
+        assert!(matches!(
+            VocabBlob::from_bytes(&bytes),
+            Err(DataError::BadMagic)
+        ));
     }
 
     #[test]
@@ -165,7 +179,10 @@ mod tests {
         let mut bytes = sample().to_bytes();
         let n = bytes.len();
         bytes[n - 1] ^= 0xFF; // flip a body byte
-        assert!(matches!(VocabBlob::from_bytes(&bytes), Err(DataError::Checksum { .. })));
+        assert!(matches!(
+            VocabBlob::from_bytes(&bytes),
+            Err(DataError::Checksum { .. })
+        ));
     }
 
     #[test]
@@ -180,8 +197,11 @@ mod tests {
     #[test]
     #[ignore = "requires data/cl100k_base.stb (run: cargo run -p xtask -- build-data cl100k_base)"]
     fn loads_real_cl100k() {
-        let bytes =
-            std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/cl100k_base.stb")).unwrap();
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/cl100k_base.stb"
+        ))
+        .unwrap();
         let blob = VocabBlob::from_bytes(&bytes).unwrap();
         assert_eq!(blob.name, "cl100k_base");
         assert_eq!(blob.max_id, 100276);

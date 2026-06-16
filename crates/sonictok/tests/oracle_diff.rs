@@ -18,7 +18,9 @@ fn corpus_matches_oracle() {
         }
     }
     if let Some((n, line, want, got)) = mismatched_line {
-        panic!("line {n} diverges from oracle:\n  text={line:?}\n  oracle={want:?}\n  sonictok={got:?}");
+        panic!(
+            "line {n} diverges from oracle:\n  text={line:?}\n  oracle={want:?}\n  sonictok={got:?}"
+        );
     }
 
     // whole-document check too (catches cross-line boundary issues)

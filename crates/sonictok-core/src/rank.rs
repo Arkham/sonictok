@@ -20,7 +20,9 @@ pub struct RankMap {
 
 impl RankMap {
     pub fn from_pairs(pairs: impl IntoIterator<Item = (Vec<u8>, Rank)>) -> Self {
-        Self { map: pairs.into_iter().collect() }
+        Self {
+            map: pairs.into_iter().collect(),
+        }
     }
     pub fn len(&self) -> usize {
         self.map.len()
@@ -31,7 +33,10 @@ impl RankMap {
     /// Reverse lookup id -> bytes, used by decode. O(n); replaced by a
     /// dense table at load time in the public crate. Provided here for tests.
     pub fn bytes_for(&self, id: Rank) -> Option<&[u8]> {
-        self.map.iter().find(|&(_, &r)| r == id).map(|(k, _)| k.as_slice())
+        self.map
+            .iter()
+            .find(|&(_, &r)| r == id)
+            .map(|(k, _)| k.as_slice())
     }
 }
 

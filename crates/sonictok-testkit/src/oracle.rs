@@ -13,7 +13,10 @@ pub struct Oracle {
 impl Oracle {
     pub fn cl100k() -> Self {
         let blob = crate::corpora::cl100k_blob();
-        Self { re: Regex::new(CL100K_PAT).unwrap(), ranks: RankMap::from_pairs(blob.ranks) }
+        Self {
+            re: Regex::new(CL100K_PAT).unwrap(),
+            ranks: RankMap::from_pairs(blob.ranks),
+        }
     }
     /// encode_ordinary via the reference regex.
     pub fn encode_ordinary(&self, text: &str) -> Vec<Rank> {

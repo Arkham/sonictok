@@ -20,10 +20,16 @@ impl SpecialTokens {
         self.entries.iter().map(|(b, r)| (b.as_slice(), *r))
     }
     pub fn id_of(&self, name: &[u8]) -> Option<Rank> {
-        self.entries.iter().find(|(b, _)| b == name).map(|(_, r)| *r)
+        self.entries
+            .iter()
+            .find(|(b, _)| b == name)
+            .map(|(_, r)| *r)
     }
     pub fn name_of(&self, id: Rank) -> Option<&[u8]> {
-        self.entries.iter().find(|(_, r)| *r == id).map(|(b, _)| b.as_slice())
+        self.entries
+            .iter()
+            .find(|(_, r)| *r == id)
+            .map(|(b, _)| b.as_slice())
     }
 
     /// Find the earliest special-token occurrence at or after `from`, restricted

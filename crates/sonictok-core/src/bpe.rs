@@ -1,12 +1,14 @@
 //! Exact tiktoken backtracking BPE. The result is identical to tiktoken's
 //! `_byte_pair_merge`: merge the globally-minimum-rank adjacent pair, ties
 //! broken leftmost (strict `<`). Single-byte and whole-piece are shortcuts.
-use crate::rank::{Rank, RankLookup, RANK_MAX};
+use crate::rank::{RANK_MAX, Rank, RankLookup};
 
 #[inline]
 fn pair_rank<R: RankLookup>(piece: &[u8], parts: &[(usize, Rank)], i: usize, ranks: &R) -> Rank {
     if i + 3 < parts.len() {
-        ranks.get(&piece[parts[i].0..parts[i + 3].0]).unwrap_or(RANK_MAX)
+        ranks
+            .get(&piece[parts[i].0..parts[i + 3].0])
+            .unwrap_or(RANK_MAX)
     } else {
         RANK_MAX
     }
@@ -56,7 +58,9 @@ pub fn byte_pair_encode<R: RankLookup>(piece: &[u8], ranks: &R, out: &mut Vec<Ra
     }
 
     for w in parts.windows(2) {
-        let tok = ranks.get(&piece[w[0].0..w[1].0]).expect("merged token must exist");
+        let tok = ranks
+            .get(&piece[w[0].0..w[1].0])
+            .expect("merged token must exist");
         out.push(tok);
     }
 }

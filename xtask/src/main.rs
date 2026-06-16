@@ -42,7 +42,12 @@ fn build_data(enc: &str) {
         specials.push((name.as_bytes().to_vec(), id));
     }
 
-    let blob = sonictok_data::VocabBlob { name: enc.to_string(), max_id, ranks, specials };
+    let blob = sonictok_data::VocabBlob {
+        name: enc.to_string(),
+        max_id,
+        ranks,
+        specials,
+    };
     let bytes = blob.to_bytes();
     let out = format!("data/{enc}.stb");
     std::fs::write(&out, &bytes).expect("write blob");

@@ -16,13 +16,18 @@ fn decode_input(r: &Record) -> Vec<u8> {
         s.clone().into_bytes()
     } else {
         use base64::Engine as _;
-        base64::engine::general_purpose::STANDARD.decode(r.input_b64.as_ref().unwrap()).unwrap()
+        base64::engine::general_purpose::STANDARD
+            .decode(r.input_b64.as_ref().unwrap())
+            .unwrap()
     }
 }
 
 #[test]
 fn cl100k_fixtures_match() {
-    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures/cl100k_base.json");
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/cl100k_base.json"
+    );
     let json = std::fs::read_to_string(path).expect("run tools/gen_fixtures.py");
     let records: Vec<Record> = serde_json::from_str(&json).unwrap();
     let t = get_encoding("cl100k_base").expect("data/cl100k_base.stb");

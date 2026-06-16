@@ -30,7 +30,12 @@ pub struct Engine<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> {
 
 impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, P> {
     pub fn new(ranks: &'a R, decoder: &'a D, specials: &'a SpecialTokens) -> Self {
-        Self { ranks, decoder, specials, _pre: std::marker::PhantomData }
+        Self {
+            ranks,
+            decoder,
+            specials,
+            _pre: std::marker::PhantomData,
+        }
     }
 
     /// encode_ordinary: specials are literal bytes. Appends ids to `out`.
@@ -55,7 +60,8 @@ impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, 
     /// encode_with_special: all specials recognized -> their ids.
     pub fn encode_with_special_into(&self, text: &str, out: &mut Vec<Rank>) {
         let allow_all = |_id: Rank| true;
-        self.encode_special_inner(text.as_bytes(), &allow_all, out).expect("all allowed");
+        self.encode_special_inner(text.as_bytes(), &allow_all, out)
+            .expect("all allowed");
     }
 
     /// encode: raises on a special not in `allowed`.
@@ -83,7 +89,10 @@ impl<'a, R: RankLookup, D: Decoder, P: Pretokenizer + Default> Engine<'a, R, D, 
         // tiktoken semantics: if any DISALLOWED special appears literally, error
         // (find_next returns the earliest such occurrence).
         if let Some((s, e, _id)) = self.specials.find_next(bytes, 0, &|id: Rank| !allowed(id)) {
-            return Err(DisallowedSpecial { token: bytes[s..e].to_vec(), offset: s });
+            return Err(DisallowedSpecial {
+                token: bytes[s..e].to_vec(),
+                offset: s,
+            });
         }
         // Now split on allowed specials and encode ordinary spans between.
         let mut pos = 0;
@@ -135,8 +144,7 @@ mod tests {
 
     // Build a byte-only vocab (ids 0..256 == bytes) + decoder for round-trip.
     fn byte_vocab() -> (RankMap, VecDecoder) {
-        let pairs: Vec<(Vec<u8>, Rank)> =
-            (0u16..256).map(|b| (vec![b as u8], b as Rank)).collect();
+        let pairs: Vec<(Vec<u8>, Rank)> = (0u16..256).map(|b| (vec![b as u8], b as Rank)).collect();
         let dec: Vec<Option<Vec<u8>>> = (0u16..256).map(|b| Some(vec![b as u8])).collect();
         (RankMap::from_pairs(pairs), VecDecoder(dec))
     }
@@ -170,7 +178,9 @@ mod tests {
         let eng = Engine::<_, _, Cl100kPretokenizer>::new(&v, &d, &sp);
         let mut ids = vec![];
         let deny_all = |_id| false;
-        let err = eng.encode_into("a<|endoftext|>b", &deny_all, &mut ids).unwrap_err();
+        let err = eng
+            .encode_into("a<|endoftext|>b", &deny_all, &mut ids)
+            .unwrap_err();
         assert_eq!(err.offset, 1);
         assert_eq!(err.token, b"<|endoftext|>");
     }
