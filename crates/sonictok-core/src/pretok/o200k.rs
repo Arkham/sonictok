@@ -128,40 +128,37 @@ fn match_letters(input: &[u8], start: usize) -> Option<usize> {
     None
 }
 
+/// End index of the o200k piece starting at `start` (scalar; handles Unicode).
+pub fn piece_end(input: &[u8], start: usize) -> usize {
+    let (c0, w0) = char_at(input, start);
+
+    // Alts 1-2: case-aware letter sequences (+ optional contraction).
+    if let Some(end) = match_letters(input, start) {
+        return end;
+    }
+    // Alt 3: \p{N}{1,3}
+    if is_number(c0) {
+        return scan_number(input, start);
+    }
+    // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n/]*   (note: '/' in the trailing class)
+    if let Some(end) = scan_punct(input, start, true) {
+        return end;
+    }
+    // Alt 5-7: whitespace cascade
+    if is_whitespace(c0) {
+        return scan_whitespace(input, start);
+    }
+    // Fallback: unreachable for valid inputs; guarantee progress.
+    start + w0.max(1)
+}
+
 impl Pretokenizer for O200kPretokenizer {
     fn next_piece(&mut self, input: &[u8]) -> Option<(usize, usize)> {
         let start = self.pos;
         if start >= input.len() {
             return None;
         }
-        let (c0, w0) = char_at(input, start);
-
-        // Alts 1-2: case-aware letter sequences (+ optional contraction).
-        if let Some(end) = match_letters(input, start) {
-            self.pos = end;
-            return Some((start, end));
-        }
-
-        // Alt 3: \p{N}{1,3}
-        if is_number(c0) {
-            self.pos = scan_number(input, start);
-            return Some((start, self.pos));
-        }
-
-        // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n/]*   (note: '/' in the trailing class)
-        if let Some(end) = scan_punct(input, start, true) {
-            self.pos = end;
-            return Some((start, end));
-        }
-
-        // Alt 5-7: whitespace cascade
-        if is_whitespace(c0) {
-            self.pos = scan_whitespace(input, start);
-            return Some((start, self.pos));
-        }
-
-        // Fallback: unreachable for valid inputs; guarantee progress.
-        self.pos = start + w0.max(1);
+        self.pos = piece_end(input, start);
         Some((start, self.pos))
     }
 }

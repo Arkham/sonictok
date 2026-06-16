@@ -30,6 +30,14 @@ fn bench_encode(c: &mut Criterion) {
         b.iter(|| std::hint::black_box(t.encode_batch(std::hint::black_box(&docs))))
     });
     g.finish();
+
+    let o = get_encoding("o200k_base").expect("data/o200k_base.stb");
+    let mut g = c.benchmark_group("o200k_base");
+    g.throughput(Throughput::Bytes(text.len() as u64));
+    g.bench_function("encode_ordinary", |b| {
+        b.iter(|| std::hint::black_box(o.encode_ordinary(std::hint::black_box(&text))))
+    });
+    g.finish();
 }
 
 criterion_group!(benches, bench_encode);
