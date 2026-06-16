@@ -8,8 +8,11 @@ fn main() {
     match args.get(1).map(String::as_str) {
         Some("build-data") => build_data(args.get(2).map(String::as_str).unwrap_or("cl100k_base")),
         Some("bench-compare") => bench_compare(),
+        Some("test-cabi") => test_cabi(),
         other => {
-            eprintln!("usage: xtask <build-data [encoding]|bench-compare>; got {other:?}");
+            eprintln!(
+                "usage: xtask <build-data [encoding]|bench-compare|test-cabi>; got {other:?}"
+            );
             exit(2);
         }
     }
@@ -78,4 +81,24 @@ fn bench_compare() {
 fn run(cmd: &mut std::process::Command) {
     let status = cmd.status().expect("spawn");
     assert!(status.success(), "command failed: {cmd:?}");
+}
+
+/// Build the C ABI static lib, compile the C smoke test with the system C
+/// compiler, and run it (proves the ABI links + works from C).
+fn test_cabi() {
+    use std::process::Command;
+    run(Command::new("cargo").args(["build", "-p", "sonictok-cabi", "--release"]));
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_string());
+    run(Command::new(&cc).args([
+        "crates/sonictok-cabi/test/test_cabi.c",
+        "-I",
+        "crates/sonictok-cabi/include",
+        "-L",
+        "target/release",
+        "-lsonictok",
+        "-o",
+        "target/release/test_cabi",
+    ]));
+    let data = format!("{}/data", std::env::current_dir().unwrap().display());
+    run(Command::new("target/release/test_cabi").env("SONICTOK_DATA", data));
 }

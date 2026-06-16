@@ -750,6 +750,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sonictok-cabi"
+version = "0.0.0"
+dependencies = [
+ "sonictok",
+]
+
+[[package]]
 name = "sonictok-core"
 version = "0.0.0"
 

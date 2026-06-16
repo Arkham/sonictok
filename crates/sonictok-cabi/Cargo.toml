@@ -1,0 +1,13 @@
+[package]
+name = "sonictok-cabi"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "sonictok"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+api = { package = "sonictok", path = "../sonictok" }
