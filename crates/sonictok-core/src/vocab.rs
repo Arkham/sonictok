@@ -14,6 +14,12 @@ use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 const IVBITS: u32 = 20; // 2^20 memo slots (4 MB of AtomicU32)
 const IV_TAGBITS: u32 = 36 - IVBITS;
 
+// Packed e2 slot: [63]=used [62:38]=tag25 [37:18]=child20 [17:0]=best18.
+const E2_USED: u64 = 1 << 63;
+const E2_TAGMASK: u64 = (1 << 25) - 1;
+const E2_CMP: u64 = E2_USED | (E2_TAGMASK << 38);
+const E2_BEST_NONE: u32 = 0x3_FFFF;
+
 /// Bijective 36-bit mixer (self-inverse xorshift / odd-multiply / xorshift), so
 /// index bits + tag bits reconstruct the key exactly — a tagged slot never
 /// aliases a different key, keeping the memo exact.
@@ -37,10 +43,13 @@ pub struct Vocab {
     // the first <= 2 bytes.
     r2node: Vec<u32>,
     r2best: Vec<u32>,
-    // 2-byte trie: one slot load consumes 2 bytes. e2 keyed on node<<16|b1b2.
-    e2key: Vec<u64>, // key+1, 0 = empty
-    e2val: Vec<u64>, // child<<32 | best_token (best = RANK_MAX if none)
+    // 2-byte trie: ONE u64 slot load consumes 2 bytes (packed used+tag+child+best).
+    // Keyed on node<<16|b1b2 via the bijective mix36; index+tag reconstruct the
+    // key exactly (construction verifies no probe chain reaches a same-tag
+    // stranger), so the table is exact.
+    e2: Vec<u64>,
     e2mask: u32,
+    e2tb: u32, // index shift = 36 - log2(slots)
     // odd-depth tokens: a token ending one byte past an even-depth node.
     otab: Vec<u64>, // (key+1)<<18 | token, key = node<<8|byte; 0 = empty
     omask: u32,
@@ -57,6 +66,35 @@ pub struct Vocab {
 #[inline]
 fn mul_shift(k: u64, mask: u32) -> u32 {
     (k.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as u32 & mask
+}
+
+/// Longest run of consecutive occupied slots (treating the table as circular).
+fn max_circular_run(slots: &[u64]) -> u64 {
+    let mut run = 0u64;
+    let mut maxrun = 0u64;
+    let mut lead = 0u64;
+    let mut open = true;
+    for &s in slots {
+        if s != 0 {
+            run += 1;
+            if run > maxrun {
+                maxrun = run;
+            }
+        } else {
+            if open {
+                lead = run;
+                open = false;
+            }
+            run = 0;
+        }
+    }
+    if open {
+        return slots.len() as u64; // fully occupied (can't happen at load < 1)
+    }
+    if run + lead > maxrun {
+        maxrun = run + lead; // wraparound run
+    }
+    maxrun
 }
 
 impl Vocab {
@@ -108,21 +146,22 @@ impl Vocab {
         let mut i = 2;
         while node != 0 && i + 1 < len {
             let k = ((node as u64) << 16) | ((text[i] as u64) << 8) | text[i + 1] as u64;
-            let want = k + 1;
-            let mut h = mul_shift(k, self.e2mask);
-            let mut found = false;
+            let m = mix36(k);
+            let want = ((m & E2_TAGMASK) << 38) | E2_USED;
+            let mut h = (m >> self.e2tb) as u32 & self.e2mask;
+            let mut val = 0u64;
             loop {
-                let ek = self.e2key[h as usize];
-                if ek == 0 {
+                let s = self.e2[h as usize];
+                if s == 0 {
                     break;
                 }
-                if ek == want {
-                    found = true;
+                if (s & E2_CMP) == want {
+                    val = s;
                     break;
                 }
                 h = (h + 1) & self.e2mask;
             }
-            if !found {
+            if val == 0 {
                 // no 2-byte step: an odd-depth token may extend one byte
                 let o = self.odd_lookup(node, text[i]);
                 if o != RANK_MAX {
@@ -130,12 +169,11 @@ impl Vocab {
                 }
                 return best;
             }
-            let val = self.e2val[h as usize];
-            let b = val as u32;
-            if b != RANK_MAX {
-                best = b;
+            let b18 = val as u32 & E2_BEST_NONE;
+            if b18 != E2_BEST_NONE {
+                best = b18;
             }
-            node = (val >> 32) as u32;
+            node = (val >> 18) as u32 & 0xF_FFFF;
             i += 2;
         }
         if node != 0 && i < len {
@@ -370,9 +408,9 @@ impl Vocab {
             tnode_tok: vec![RANK_MAX; 1], // root = node 0
             r2node: Vec::new(),
             r2best: Vec::new(),
-            e2key: Vec::new(),
-            e2val: Vec::new(),
+            e2: Vec::new(),
             e2mask: 0,
+            e2tb: 0,
             otab: Vec::new(),
             omask: 0,
             npm: Vec::new(),
@@ -450,21 +488,39 @@ impl Vocab {
                     otmap.entry(key).or_insert(id as u32);
                 }
             }
-            // pack e2 into an open-addressed table (load factor ~0.5).
-            let mut e2cap = 1024usize;
-            while (e2map.len() as f64) / (e2cap as f64) > 0.5 {
-                e2cap <<= 1;
+            // pack e2 into the tagged single-u64 table (load factor ~0.5, floor
+            // 2^17). Verify no circular run of occupied slots reaches the
+            // same-tag separation bound 2^(bits-11) — else double and repack, so
+            // a probe chain can never reach a same-tag stranger (exactness).
+            let entries: Vec<(u64, u32, u32)> =
+                e2map.into_iter().map(|(k, (c, b))| (k, c, b)).collect();
+            let mut want_cap = 1usize << 17;
+            while (entries.len() as f64) / (want_cap as f64) > 0.5 {
+                want_cap <<= 1;
             }
-            v.e2key = vec![0u64; e2cap];
-            v.e2val = vec![0u64; e2cap];
-            v.e2mask = (e2cap - 1) as u32;
-            for (k, (child, best)) in e2map {
-                let mut h = mul_shift(k, v.e2mask);
-                while v.e2key[h as usize] != 0 {
-                    h = (h + 1) & v.e2mask;
+            loop {
+                let bits = want_cap.trailing_zeros();
+                let mask = (want_cap - 1) as u32;
+                let tb = 36 - bits;
+                let mut e2 = vec![0u64; want_cap];
+                for &(k, child, best) in &entries {
+                    debug_assert!(child < (1 << 20) && (best == RANK_MAX || best < (1 << 18)));
+                    let m = mix36(k);
+                    let mut h = (m >> tb) as u32 & mask;
+                    while e2[h as usize] != 0 {
+                        h = (h + 1) & mask;
+                    }
+                    let best18 = if best == RANK_MAX { E2_BEST_NONE } else { best };
+                    e2[h as usize] =
+                        E2_USED | ((m & E2_TAGMASK) << 38) | ((child as u64) << 18) | best18 as u64;
                 }
-                v.e2key[h as usize] = k + 1;
-                v.e2val[h as usize] = ((child as u64) << 32) | best as u64;
+                if max_circular_run(&e2) < (1u64 << (bits - 11)) {
+                    v.e2 = e2;
+                    v.e2mask = mask;
+                    v.e2tb = tb;
+                    break;
+                }
+                want_cap <<= 1; // never fires at load 0.5; exactness insurance
             }
             // pack otab.
             let mut ocap = 1024usize;
