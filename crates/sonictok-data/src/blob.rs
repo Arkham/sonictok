@@ -9,17 +9,27 @@
 //!   n_ranks:  u32
 //!   n_special:u32
 //!   max_id:   u32      (n_vocab = max_id + 1)
+//!   [v2+] grammar: u8  (0=cl100k, 1=o200k, 2=qwen) — the self-describing field
+//!   [v2+] normalizer: u8 (0=none, 1=NFC)           that lets imported encodings
+//!                                                  carry their config
 //!   rank section:    n_ranks * { len: u32, bytes: [u8; len], id: u32 }
 //!   special section: n_special * { len: u16, bytes: [u8; len], id: u32 }
 use crate::error::DataError;
 
 pub const MAGIC: &[u8; 8] = b"SONICTK\0";
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
+
+/// Grammar carried by v1 blobs (unknown — caller infers from the name).
+pub const GRAMMAR_UNKNOWN: u8 = 255;
 
 #[derive(Debug, Clone)]
 pub struct VocabBlob {
     pub name: String,
     pub max_id: u32,
+    /// 0=cl100k, 1=o200k, 2=qwen (GRAMMAR_UNKNOWN for legacy v1 blobs).
+    pub grammar: u8,
+    /// 0=none, 1=NFC.
+    pub normalizer: u8,
     pub ranks: Vec<(Vec<u8>, u32)>,
     pub specials: Vec<(Vec<u8>, u32)>,
 }
@@ -43,6 +53,8 @@ impl VocabBlob {
         body.extend_from_slice(&(self.ranks.len() as u32).to_le_bytes());
         body.extend_from_slice(&(self.specials.len() as u32).to_le_bytes());
         body.extend_from_slice(&self.max_id.to_le_bytes());
+        body.push(self.grammar);
+        body.push(self.normalizer);
         for (b, id) in &self.ranks {
             body.extend_from_slice(&(b.len() as u32).to_le_bytes());
             body.extend_from_slice(b);
@@ -89,6 +101,11 @@ impl VocabBlob {
         let n_ranks = r.u32()? as usize;
         let n_special = r.u32()? as usize;
         let max_id = r.u32()?;
+        let (grammar, normalizer) = if version >= 2 {
+            (r.u8()?, r.u8()?)
+        } else {
+            (GRAMMAR_UNKNOWN, 0)
+        };
         let mut ranks = Vec::with_capacity(n_ranks);
         for _ in 0..n_ranks {
             let len = r.u32()? as usize;
@@ -106,6 +123,8 @@ impl VocabBlob {
         Ok(Self {
             name,
             max_id,
+            grammar,
+            normalizer,
             ranks,
             specials,
         })
@@ -117,6 +136,9 @@ struct Reader<'a> {
     pos: usize,
 }
 impl<'a> Reader<'a> {
+    fn u8(&mut self) -> Result<u8, DataError> {
+        Ok(self.take(1)?[0])
+    }
     fn take(&mut self, n: usize) -> Result<&'a [u8], DataError> {
         let end = self
             .pos
@@ -148,6 +170,8 @@ mod tests {
         VocabBlob {
             name: "cl100k_base".into(),
             max_id: 100276,
+            grammar: 2,
+            normalizer: 1,
             ranks: vec![(b"a".to_vec(), 0), (b"ab".to_vec(), 1)],
             specials: vec![(b"<|endoftext|>".to_vec(), 100257)],
         }
@@ -160,6 +184,8 @@ mod tests {
         let got = VocabBlob::from_bytes(&bytes).unwrap();
         assert_eq!(got.name, "cl100k_base");
         assert_eq!(got.max_id, 100276);
+        assert_eq!(got.grammar, 2);
+        assert_eq!(got.normalizer, 1);
         assert_eq!(got.ranks, b.ranks);
         assert_eq!(got.specials, b.specials);
     }

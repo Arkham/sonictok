@@ -24,6 +24,16 @@ fn grammar_for(encoding: &str) -> Option<Grammar> {
     }
 }
 
+/// Blob grammar byte -> Grammar (0=cl100k, 1=o200k, 2=qwen).
+fn grammar_from_u8(g: u8) -> Option<Grammar> {
+    match g {
+        0 => Some(Grammar::Cl100k),
+        1 => Some(Grammar::O200k),
+        2 => Some(Grammar::Qwen),
+        _ => None,
+    }
+}
+
 /// Which special tokens `encode` will accept without erroring.
 pub enum Allowed<'a> {
     All,
@@ -44,6 +54,7 @@ impl Decoder for DenseDecoder {
 pub struct Tokenizer {
     encoding: String,
     grammar: Grammar,
+    nfc: bool,
     vocab: Vocab,
     decoder: DenseDecoder,
     specials: SpecialTokens,
@@ -60,8 +71,17 @@ const _: fn() = || {
 
 impl Tokenizer {
     pub fn from_blob(blob: VocabBlob) -> Result<Self, Error> {
-        let grammar =
-            grammar_for(&blob.name).ok_or_else(|| Error::UnsupportedEncoding(blob.name.clone()))?;
+        // Self-describing v2 blobs carry their grammar + normalizer; legacy v1
+        // blobs fall back to a name-based lookup.
+        let (grammar, nfc) = if blob.grammar != sonictok_data::GRAMMAR_UNKNOWN {
+            let g = grammar_from_u8(blob.grammar)
+                .ok_or_else(|| Error::UnsupportedEncoding(blob.name.clone()))?;
+            (g, blob.normalizer == 1)
+        } else {
+            let g = grammar_for(&blob.name)
+                .ok_or_else(|| Error::UnsupportedEncoding(blob.name.clone()))?;
+            (g, blob.name == "qwen3")
+        };
         let vocab_size = blob.ranks.len();
         let n_vocab = (blob.max_id as usize) + 1;
         let mut by_id: Vec<Option<Vec<u8>>> = vec![None; n_vocab];
@@ -73,6 +93,7 @@ impl Tokenizer {
         Ok(Tokenizer {
             encoding: blob.name,
             grammar,
+            nfc,
             vocab,
             decoder: DenseDecoder { by_id },
             specials,
@@ -81,10 +102,9 @@ impl Tokenizer {
         })
     }
 
+    /// Load an encoding from a directory. Any valid `<encoding>.stb` blob loads
+    /// (including imported ones) — the blob is self-describing.
     pub fn load_dir(dir: &Path, encoding: &str) -> Result<Self, Error> {
-        if grammar_for(encoding).is_none() {
-            return Err(Error::UnsupportedEncoding(encoding.to_string()));
-        }
         let path = dir.join(format!("{encoding}.stb"));
         let bytes = std::fs::read(path)?;
         let blob = VocabBlob::from_bytes(&bytes)?;
@@ -100,7 +120,7 @@ impl Tokenizer {
     /// the same `unicode-normalization` crate, so this matches byte-for-byte.
     fn normalize<'a>(&self, text: &'a str) -> std::borrow::Cow<'a, str> {
         use unicode_normalization::{IsNormalized, UnicodeNormalization, is_nfc_quick};
-        if self.grammar == Grammar::Qwen {
+        if self.nfc {
             match is_nfc_quick(text.chars()) {
                 IsNormalized::Yes => std::borrow::Cow::Borrowed(text),
                 _ => std::borrow::Cow::Owned(text.nfc().collect()),
@@ -266,9 +286,6 @@ fn embedded_blob(name: &str) -> Option<&'static [u8]> {
 /// Bundled-encoding lookup. Resolution order: `SONICTOK_DATA` env override, then
 /// embedded blobs (feature `embed-data`), then the in-repo `data/` dir (dev).
 pub fn get_encoding(name: &str) -> Result<Tokenizer, Error> {
-    if grammar_for(name).is_none() {
-        return Err(Error::UnsupportedEncoding(name.to_string()));
-    }
     if let Ok(dir) = std::env::var("SONICTOK_DATA") {
         return Tokenizer::load_dir(std::path::Path::new(&dir), name);
     }
@@ -286,6 +303,28 @@ mod tests {
 
     fn tok() -> Tokenizer {
         get_encoding("cl100k_base").unwrap()
+    }
+
+    /// A self-describing v2 blob loads under an arbitrary name (the core guarantee
+    /// that makes the generic importer work), carrying its own grammar + NFC.
+    #[test]
+    fn imported_blob_is_self_describing() {
+        let ranks: Vec<(Vec<u8>, u32)> = (0u16..256).map(|b| (vec![b as u8], b as u32)).collect();
+        let blob = VocabBlob {
+            name: "custom_enc".into(),
+            max_id: 255,
+            grammar: 2,    // qwen
+            normalizer: 1, // NFC
+            ranks,
+            specials: vec![],
+        };
+        // round-trips through the serialized form (what the importer writes).
+        let t = Tokenizer::from_blob(VocabBlob::from_bytes(&blob.to_bytes()).unwrap()).unwrap();
+        assert_eq!(t.encoding(), "custom_enc"); // name not in grammar_for, still loads
+        // grammar=qwen (single-digit numbers) came from the blob:
+        assert_eq!(t.encode_ordinary("12"), vec![b'1' as u32, b'2' as u32]);
+        // normalizer=NFC came from the blob: decomposed input normalizes.
+        assert_eq!(t.decode(&t.encode_ordinary("e\u{0301}")).unwrap(), "\u{e9}");
     }
 
     #[test]

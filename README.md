@@ -38,6 +38,23 @@ python tools/export_llama3.py && cargo run -p xtask -- build-data llama3
 python tools/gen_fixtures_qwen3.py && python tools/gen_fixtures_llama3.py
 ```
 
+### Importing other tokenizers
+
+Any byte-level-BPE tokenizer whose pre-tokenizer matches one of sonictok's
+hand-compiled grammars (cl100k / qwen / o200k) and whose normalizer is none or
+NFC can be imported — the blob is self-describing (it carries its grammar +
+normalizer), so no Rust changes are needed:
+
+```sh
+python tools/import_tokenizer.py Qwen/Qwen2.5-1.5B myqwen   # HF repo id, URL, or local path
+# then, with SONICTOK_DATA pointing at data/:  sonictok.get_encoding("myqwen")
+```
+
+The importer classifies the pre-tokenizer regex, converts the vocab, packs the
+blob, and **verifies token-for-token against the reference HF tokenizer** (a
+mismatch fails the import). An unrecognized pattern or normalizer is refused with
+the reason printed — there is no fallback regex engine.
+
 ### C / any language (stable ABI)
 
 `crates/sonictok-cabi` builds `libsonictok.{a,dylib}` + `include/sonictok.h`.

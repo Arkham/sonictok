@@ -6,7 +6,11 @@ use std::process::exit;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
-        Some("build-data") => build_data(args.get(2).map(String::as_str).unwrap_or("cl100k_base")),
+        Some("build-data") => build_data(
+            args.get(2).map(String::as_str).unwrap_or("cl100k_base"),
+            args.get(3).map(String::as_str),
+            args.get(4).map(String::as_str),
+        ),
         Some("bench-compare") => bench_compare(),
         Some("test-cabi") => test_cabi(),
         other => {
@@ -18,9 +22,27 @@ fn main() {
     }
 }
 
-fn build_data(enc: &str) {
+/// (grammar, normalizer) for bundled encodings. grammar: 0=cl100k 1=o200k 2=qwen.
+/// normalizer: 0=none 1=NFC. Imports pass these explicitly on the CLI.
+fn bundled_meta(enc: &str) -> (u8, u8) {
+    match enc {
+        "o200k_base" | "o200k_harmony" => (1, 0),
+        "qwen3" => (2, 1),
+        // cl100k_base, llama3, and anything else default to the cl100k grammar.
+        _ => (0, 0),
+    }
+}
+
+fn build_data(enc: &str, grammar_arg: Option<&str>, norm_arg: Option<&str>) {
     use base64::Engine as _;
     let b64 = base64::engine::general_purpose::STANDARD;
+    let (def_g, def_n) = bundled_meta(enc);
+    let grammar = grammar_arg
+        .map(|s| s.parse().expect("grammar u8"))
+        .unwrap_or(def_g);
+    let normalizer = norm_arg
+        .map(|s| s.parse().expect("normalizer u8"))
+        .unwrap_or(def_n);
 
     let ranks_path = format!("data/{enc}.tiktoken");
     let special_path = format!("data/{enc}.special");
@@ -48,13 +70,18 @@ fn build_data(enc: &str) {
     let blob = sonictok_data::VocabBlob {
         name: enc.to_string(),
         max_id,
+        grammar,
+        normalizer,
         ranks,
         specials,
     };
     let bytes = blob.to_bytes();
     let out = format!("data/{enc}.stb");
     std::fs::write(&out, &bytes).expect("write blob");
-    println!("wrote {out} ({} bytes, max_id {max_id})", bytes.len());
+    println!(
+        "wrote {out} ({} bytes, max_id {max_id}, grammar {grammar}, normalizer {normalizer})",
+        bytes.len()
+    );
 }
 
 fn bench_compare() {
