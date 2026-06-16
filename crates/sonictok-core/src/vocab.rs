@@ -292,6 +292,7 @@ impl Vocab {
     }
 
     /// Encode one pretokenized piece into token ids, appended to `out`.
+    #[inline]
     pub fn encode(&self, text: &[u8], out: &mut Vec<Rank>) {
         if text.is_empty() {
             return;
@@ -300,6 +301,7 @@ impl Vocab {
         self.encode_with_first(text, first, out);
     }
 
+    #[inline]
     fn encode_with_first(&self, text: &[u8], first: u32, out: &mut Vec<Rank>) {
         let len = text.len();
         if len == 0 {
@@ -495,7 +497,7 @@ impl Vocab {
             let entries: Vec<(u64, u32, u32)> =
                 e2map.into_iter().map(|(k, (c, b))| (k, c, b)).collect();
             let mut want_cap = 1usize << 17;
-            while (entries.len() as f64) / (want_cap as f64) > 0.5 {
+            while (entries.len() as f64) / (want_cap as f64) > 0.45 {
                 want_cap <<= 1;
             }
             loop {
