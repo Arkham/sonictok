@@ -70,3 +70,8 @@ fn o200k_harmony_fixtures_match() {
 fn qwen3_fixtures_match() {
     check_encoding("qwen3");
 }
+
+#[test]
+fn llama3_fixtures_match() {
+    check_encoding("llama3");
+}

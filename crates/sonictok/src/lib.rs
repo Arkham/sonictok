@@ -19,6 +19,7 @@ fn grammar_for(encoding: &str) -> Option<Grammar> {
         "cl100k_base" => Some(Grammar::Cl100k),
         "o200k_base" | "o200k_harmony" => Some(Grammar::O200k),
         "qwen3" => Some(Grammar::Qwen),
+        "llama3" => Some(Grammar::Cl100k), // same grammar as cl100k, no normalizer
         _ => None,
     }
 }
@@ -253,6 +254,10 @@ fn embedded_blob(name: &str) -> Option<&'static [u8]> {
         "qwen3" => Some(include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../data/qwen3.stb"
+        ))),
+        "llama3" => Some(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/llama3.stb"
         ))),
         _ => None,
     }
