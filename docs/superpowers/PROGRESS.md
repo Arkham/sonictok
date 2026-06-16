@@ -45,6 +45,35 @@ tiktoken ~14 MB/s).
 Reverted (didn't pay): a custom open-addressed table (lost to hashbrown);
 `target-cpu=native` (wash — hot path isn't autovectorized).
 
+### Profiling + two more reverts (further session)
+
+Added a `pretokenize_only` criterion bench to split the cost:
+**pretok ≈ 289 MiB/s (~30%), BPE ≈ 70%** of full encode at Rung D.
+
+Two more rungs attempted and **reverted** (kept the discipline — correctness was
+fine, but no speed win):
+
+- **Rung E — id-based BPE + `(id,id)→rank` HashMap memo.** Reformulated the merge
+  loop to track token ids and look merges up by id-pair, eliminating byte-slice
+  hashing in the hot loop. *Correct* (exactness green) but **regressed to 33
+  MiB/s**: the memo HashMap (~hundreds of k entries) is far larger than the warm
+  byte-string map and thrashes cache. quicktok's win here is a tight,
+  **direct-indexed ~2MB dense memo with a bijective mixer (perfect hash)** — not
+  a general HashMap. That's the right structure but real perfect-hashing work;
+  left for supervised implementation.
+- **ASCII run fast-scan in the pretokenizer.** Scan ASCII letter/case runs by
+  byte instead of via `char_at`. **Wash** — `char_at` already ASCII-fast-paths,
+  and the closure indirection ate the gain (pretok stayed ~281 MiB/s). The
+  scalar pretokenizer is at its ceiling; only true SIMD (16–32 bytes/instr)
+  moves it.
+
+**Conclusion:** the easy/medium ladder tops out at ~87 MiB/s (~0.57× quicktok).
+Both remaining wins are the hard structural pieces:
+1. **Dense direct-indexed merge memo** (perfect-hash) — unlocks the BPE 70%.
+2. **SIMD pretokenizer** — unlocks the pretok 30%.
+Both are best done supervised (high complexity; the oracle guards correctness but
+the perf tuning + perfect-hash construction warrant review).
+
 ## What's left to reach quicktok-native (left for supervised work)
 
 These are the high-effort, higher-risk structural wins quicktok uses. The oracle

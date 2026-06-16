@@ -11,6 +11,19 @@ fn bench_encode(c: &mut Criterion) {
     g.bench_function("encode_ordinary", |b| {
         b.iter(|| std::hint::black_box(t.encode_ordinary(std::hint::black_box(&text))))
     });
+    // Pretokenizer-only (no BPE) to isolate where time goes.
+    g.bench_function("pretokenize_only", |b| {
+        use sonictok_core::pretok::{Grammar, Pretokenizer, Scanner};
+        b.iter(|| {
+            let bytes = std::hint::black_box(text.as_bytes());
+            let mut s = Scanner::new(Grammar::Cl100k);
+            let mut n = 0usize;
+            while let Some((a, z)) = s.next_piece(bytes) {
+                n += z - a;
+            }
+            std::hint::black_box(n)
+        })
+    });
     g.finish();
 }
 

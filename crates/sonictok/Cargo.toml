@@ -11,6 +11,7 @@ sonictok-data.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+sonictok-core.workspace = true
 sonictok-testkit.workspace = true
 proptest.workspace = true
 serde = { version = "1", features = ["derive"] }
