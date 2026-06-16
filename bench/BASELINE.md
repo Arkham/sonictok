@@ -62,9 +62,40 @@ encode` (cl100k, `bench/corpus.txt`). 1 MiB/s ≈ 1.049 MB/s.
 tokenizer (bpe-openai ~37 MB/s, tiktoken ~14 MB/s). `target-cpu=native` was a
 wash (hot path isn't autovectorized).
 
-Remaining path to quicktok-native (high effort, best done supervised): hand-
-compiled SIMD pretokenizer (Rung 4) and the 2-byte trie + dense validity memos
-(quicktok's structural wins). These are the ~1.85× still on the table.
+### The big one: algorithm change (matching quicktok's approach)
+
+The early ladder optimized tiktoken's O(n·merges) iterative merge. quicktok (and
+bpe-openai) use the **`bpe` crate's linear-time algorithm**: greedy longest-match
+via a trie + memoized `is_valid_token_pair` + rare backtracking. Switching to it
+(plus the supporting data structures) is what closed most of the gap:
+
+| Stage | cl100k MiB/s | vs quicktok | note |
+|-------|------------:|------------:|------|
+| merge-based ladder (Rungs A–D) | 99 | 0.65× | tiktoken algorithm, tuned |
+| + bpe-crate algorithm + 2-byte trie | 104 | 0.68× | right algorithm |
+| + packed single-u64 e2 (mixer+tag) | 110 | 0.72× | 1 load/2 bytes |
+| + fused cl100k product machine | 121 | 0.79× | pretok+emit single pass |
+| + inline hot path, e2 load 0.45 | 126 | 0.83× | |
+| + reuse backtracking scratch | **~129** | **~0.90×** | no per-piece alloc |
+
+**Net: 35.8 → ~129 MiB/s (3.6×), ~90% of quicktok-native single-thread**, byte-
+exact throughout (fixtures + full-corpus oracle-diff vs an independent
+merge-reference, both cl100k + o200k).
+
+Reverted (measured, didn't pay): hashmap `(id,id)` memo (cache thrash), combined
+r2 array (wash), u16 narrow memo (branch overhead > cache win), `target-cpu=native`.
+
+## Final head-to-head (this M3 Pro, `bench/corpus.txt`, cl100k)
+
+| | sonictok | quicktok | ratio |
+|--|---------:|---------:|------:|
+| single-thread | ~135 MB/s | 149.5 MB/s | **0.90×** |
+| batch (all cores) | ~755 MB/s | 760 MB/s (8t) | **0.99×** |
+
+Decisively faster than every other exact tokenizer (bpe-openai ~37, tiktoken ~14
+MB/s). Remaining single-thread gap is fine cache/codegen tuning; the CJK
+multibyte trie path (r3/encode_mb) is unimplemented (helps non-Latin, not this
+corpus).
 
 ## Parallel batch (rayon, `parallel` feature, default on)
 
