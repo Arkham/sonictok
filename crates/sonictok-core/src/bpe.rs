@@ -3,11 +3,15 @@
 //! broken leftmost (strict `<`). Single-byte and whole-piece are shortcuts.
 use crate::rank::{RANK_MAX, Rank, RankLookup};
 
+/// A working part: (byte offset, rank of the pair with the next part, token id
+/// of the token starting here). Tracking the id lets emission be lookup-free.
+type Part = (u32, Rank, Rank);
+
 #[inline]
-fn pair_rank<R: RankLookup>(piece: &[u8], parts: &[(usize, Rank)], i: usize, ranks: &R) -> Rank {
+fn pair_rank<R: RankLookup>(piece: &[u8], parts: &[Part], i: usize, ranks: &R) -> Rank {
     if i + 3 < parts.len() {
         ranks
-            .get(&piece[parts[i].0..parts[i + 3].0])
+            .get(&piece[parts[i].0 as usize..parts[i + 3].0 as usize])
             .unwrap_or(RANK_MAX)
     } else {
         RANK_MAX
@@ -21,7 +25,7 @@ fn pair_rank<R: RankLookup>(piece: &[u8], parts: &[(usize, Rank)], i: usize, ran
 pub fn byte_pair_encode<R: RankLookup>(
     piece: &[u8],
     ranks: &R,
-    parts: &mut Vec<(usize, Rank)>,
+    parts: &mut Vec<Part>,
     out: &mut Vec<Rank>,
 ) {
     debug_assert!(!piece.is_empty());
@@ -34,21 +38,31 @@ pub fn byte_pair_encode<R: RankLookup>(
         return;
     }
 
-    // parts[k] = (byte offset of part k, rank of the pair starting at part k)
+    // parts[k] = (offset, pair-rank with next, token id at k). The last entry is
+    // the end sentinel (offset = piece.len()).
     parts.clear();
+    let n = piece.len();
     let mut min_rank: (Rank, usize) = (RANK_MAX, usize::MAX);
-    for i in 0..piece.len() - 1 {
-        let rank = ranks.get_pair(piece[i], piece[i + 1]);
+    for i in 0..n {
+        let id = ranks
+            .get(&piece[i..i + 1])
+            .expect("single byte must be a token");
+        let rank = if i + 1 < n {
+            ranks.get_pair(piece[i], piece[i + 1])
+        } else {
+            RANK_MAX
+        };
         if rank < min_rank.0 {
             min_rank = (rank, i);
         }
-        parts.push((i, rank));
+        parts.push((i as u32, rank, id));
     }
-    parts.push((piece.len() - 1, RANK_MAX));
-    parts.push((piece.len(), RANK_MAX));
+    parts.push((n as u32, RANK_MAX, RANK_MAX));
 
     while min_rank.0 != RANK_MAX {
         let i = min_rank.1;
+        // The triggering pair rank IS the id of the merged token starting at i.
+        parts[i].2 = min_rank.0;
         if i > 0 {
             parts[i - 1].1 = pair_rank(piece, parts, i - 1, ranks);
         }
@@ -56,18 +70,16 @@ pub fn byte_pair_encode<R: RankLookup>(
         parts.remove(i + 1);
 
         min_rank = (RANK_MAX, usize::MAX);
-        for (j, &(_, rank)) in parts[..parts.len() - 1].iter().enumerate() {
+        for (j, &(_, rank, _)) in parts[..parts.len() - 1].iter().enumerate() {
             if rank < min_rank.0 {
                 min_rank = (rank, j);
             }
         }
     }
 
-    for w in parts.windows(2) {
-        let tok = ranks
-            .get(&piece[w[0].0..w[1].0])
-            .expect("merged token must exist");
-        out.push(tok);
+    // Emit tracked ids (no re-lookup); skip the end sentinel.
+    for &(_, _, id) in &parts[..parts.len() - 1] {
+        out.push(id);
     }
 }
 
