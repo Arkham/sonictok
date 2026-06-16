@@ -6,3 +6,6 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+sonictok-core.workspace = true
+sonictok-data.workspace = true
+fancy-regex.workspace = true
