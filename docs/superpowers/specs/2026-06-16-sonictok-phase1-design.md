@@ -115,9 +115,13 @@ sonictok/
 
 **Rationale:**
 
-- `sonictok-core` has **zero external dependencies and no I/O**. It takes
-  already-loaded vocab structures and bytes in, returns token ids out. This is
-  the part optimized to the metal and fuzzed hardest — pure, testable, portable.
+- `sonictok-core` has **zero external *production* dependencies and no I/O**. It
+  takes already-loaded vocab structures and bytes in, returns token ids out.
+  This is the part optimized to the metal and fuzzed hardest — pure, testable,
+  portable. The zero-dep claim is about the dependency graph a downstream
+  library user pulls in; `[dev-dependencies]` (e.g. `proptest`, `criterion`) are
+  exempt because they do not propagate to consumers. `sonictok-core` itself
+  never depends on the `regex` crate (see Rung 0).
 - `sonictok-data` isolates serialization (the only code touching file formats),
   so the core never knows where bytes came from.
 - `sonictok` is the thin, ergonomic public face (tiktoken-style API). Phase 4
@@ -159,9 +163,14 @@ token ids out (Vec<u32>, or written into a caller-provided buffer)
 tiktoken's BPE is **exact backtracking BPE**, not the textbook "merge the
 lowest-rank adjacent pair greedily once": for a byte piece, it repeatedly merges
 the globally-lowest-rank adjacent pair until no merge applies, producing a
-specific segmentation. `bpe-openai` and quicktok both implement this exact
-procedure; we replicate it bit-for-bit. The optimization ladder only ever
-changes the *data structures*, never the *result*.
+specific segmentation. **Tie-breaking is correctness-critical:** when multiple
+adjacent pairs share the minimum rank, the **leftmost** (earliest starting
+offset) is merged first — this matches tiktoken's `_byte_pair_merge`. An
+implementation that breaks ties differently passes most tests but fails on
+adversarial inputs; tie-breaking cases are explicitly included in the stress
+suite (§10). `bpe-openai` and quicktok both implement this exact procedure; we
+replicate it bit-for-bit. The optimization ladder only ever changes the *data
+structures*, never the *result*.
 
 ### 5.2 Semantic entry points (match tiktoken)
 
@@ -191,10 +200,15 @@ Built as **measured, test-gated rungs**. Each rung keeps the exactness suite
 green and must show a benchmark win to stay. Every rung is reversible and behind
 a benchmark gate — complexity that doesn't pay is reverted.
 
-- **Rung 0 — Correct baseline.** `HashMap<Vec<u8>, u32>` rank lookups, exact
-  backtracking BPE, scalar pretokenizer using the `regex` crate. 100%
-  byte-exact + benchmarked. ~tiktoken speed. **Kept forever as the test-only
-  oracle.**
+- **Rung 0 — Correct baseline + oracle.** Establish a `regex`-crate-based
+  reference implementation — the *oracle* — in `sonictok-testkit` (regex is a
+  dev-dependency there, so it never reaches library users), plus a minimal
+  correct core: `HashMap<Vec<u8>, u32>` rank lookups and exact backtracking BPE.
+  `sonictok-core`'s own pretokenizer is hand-written scalar code from the start
+  (the always-correct fallback later shared with Rung 4), validated against the
+  oracle — core never depends on the `regex` crate. Goal: 100% byte-exact +
+  benchmarked (~tiktoken speed). The oracle is **kept forever as the test-only
+  reference** for the optimization-ladder diff gate.
 - **Rung 1 — Ranked-merge core.** tiktoken's exact merge loop over a small stack
   array; whole-piece direct lookup first (most short pieces resolve in one
   probe). Replace `HashMap` with a fast open-addressed table (`ahash`/FxHash) or
@@ -221,8 +235,9 @@ a benchmark gate — complexity that doesn't pay is reverted.
 
 - **Static perfect hashing** of the vocab (built offline in `xtask`) → no
   probing, smaller cache footprint than open addressing.
-- **PGO + `target-cpu`-tuned** release builds, with a portable build flag
-  (mirrors quicktok's `-march=native` vs portable split).
+- **`target-cpu`-tuned** release builds, with a portable build flag (mirrors
+  quicktok's `-march=native` vs portable split). PGO is a further win explored
+  in Phase 4 (§12), not Phase 1.
 - **`std::simd` portable layer** evaluated against hand intrinsics — keep
   whichever benchmarks faster per arch.
 - **Aggressive prefetching** in the trie walk and memo lookups, measured.
@@ -250,6 +265,16 @@ sonictok blob (one file per encoding, e.g. data/cl100k_base.stb)
 └─────────────────────────────────────────────────────────┘
 ```
 
+**Format evolution (resolves the bootstrapping question).** The blob is
+versioned and self-describing via a section table in the header. The rank-table
+and special-token sections are **always present**; the prebuilt trie and
+perfect-hash sections are **optional, present in format v2+ only**. A Rung 0/1
+loader reads only the always-present sections and ignores the rest; once
+Rung 2/3 land, `xtask build-data` emits the optional sections and the loader
+maps them. This is purely a *serialization* concern, decoupled from the runtime
+open question of how the trie and perfect hash divide labor (§14) — the format
+can carry both sections without committing which one dominates at runtime.
+
 - **Built offline** by `xtask`/`tools`: the Python export script pulls the
   reference vocab from tiktoken; `xtask build-data` constructs the trie +
   perfect-hash and serializes the blob. Expensive structure-building happens
@@ -273,9 +298,9 @@ sonictok blob (one file per encoding, e.g. data/cl100k_base.stb)
   structures handed to `sonictok-core` are immutable and `Sync` — shared across
   threads with no locks, enforced by the type system. This is the "load once,
   encode from many threads" guarantee.
-- **Embedded option:** the bundled OpenAI blobs can be `include_bytes!`'d into
-  the binary (feature-gated) so a deployed artifact needs no external data dir —
-  good for single-binary production deploys.
+- **Embedded blobs** (`include_bytes!` for single-binary deploys) are deferred
+  to Phase 4 packaging — the Phase 1 deliverable is a library, so there is no
+  Phase 1 consumer (YAGNI).
 
 ---
 
@@ -297,15 +322,16 @@ fn encode_ordinary_into(&self, text: &str, out: &mut Vec<u32>)   // zero-alloc r
 fn encode(&self, text: &str, allowed_special: Allowed<'_>) -> Result<Vec<u32>, EncodeError>
 fn encode_with_special(&self, text: &str) -> Vec<u32>            // all specials on
 
-// Counting (no id materialization)
+// Counting (runs the full pipeline but emits into a counter instead of a Vec,
+// avoiding output materialization — it is NOT encode_ordinary().len())
 fn count(&self, text: &str) -> usize
 
 // Decode (lossless; handles special ids)
 fn decode(&self, ids: &[u32]) -> Result<String, DecodeError>    // or decode_bytes -> Vec<u8>
 fn decode_into(&self, ids: &[u32], out: &mut Vec<u8>)
 
-// Batch / parallel (rayon, opt-in feature)
-fn encode_batch(&self, texts: &[&str], opts: BatchOpts) -> Batch  // flat ids + offsets
+// (Batch / parallel APIs — encode_batch, BatchOpts, Batch — are deferred to
+//  Phase 4, where their primary consumer, the Python bindings, lives.)
 
 // Introspection
 fn vocab_size(&self) -> usize        // base vocab
@@ -354,11 +380,23 @@ Five layers — this is where "extremely accurate and well tested" gets teeth.
    includes: ASCII/code/prose, all contraction forms, whitespace cascades,
    digit-triple boundaries, CJK, emoji/ZWJ sequences, combining marks,
    NUL/control bytes, lone surrogates-as-bytes, every special token (stray,
-   allowed, disallowed), and adversarial near-merge inputs.
-2. **Live differential testing (deep, scheduled CI).** A separate job installs
-   `tiktoken`, streams large real corpora (The Pile / GitHub code / Common Crawl
-   samples), encodes with both, and asserts byte-for-byte equality over millions
-   of tokens.
+   allowed, disallowed), and adversarial near-merge inputs **including
+   minimum-rank tie cases** (see §5.1).
+   **Fixture format:** one JSON file per encoding, an array of
+   `{ "input": "<utf8-or-base64>", "encoding": "<name>", "mode":
+   "ordinary|with_special", "ids": [u32, ...] }` objects, plus a sibling
+   `manifest.json` recording the generation timestamp, the `tiktoken` version,
+   and a content hash. Non-UTF-8 inputs are base64-encoded with an
+   `"input_b64": true` flag so the file stays valid JSON. The Rust harness reads
+   the manifest and fails loudly if the pinned `tiktoken` version drifts.
+2. **Live differential testing (deep, scheduled CI).** A separate, scheduled
+   (non-PR) job installs `tiktoken` via `pip install tiktoken==<pinned>` in the
+   CI image, fetches fixed-revision corpus samples (The Pile / GitHub code /
+   Common Crawl, ~1 GB total) from a stable URL into a CI cache (or Git LFS),
+   streams them through both encoders, and asserts byte-for-byte equality over
+   millions of tokens. It does not run on every PR — it gates merges to the
+   release branch and runs nightly. Corpus provenance and revision are recorded
+   alongside results.
 3. **Property tests (`proptest`).** Invariants over random inputs:
    `decode(encode_ordinary(x)) == x` for valid UTF-8; encode never panics on
    arbitrary bytes; `count(x) == encode_ordinary(x).len()`; batch result equals
@@ -396,7 +434,10 @@ Five layers — this is where "extremely accurate and well tested" gets teeth.
   profile (`target-cpu=native`) and a `portable` profile (baseline
   x86-64-v2 / generic aarch64, runtime feature detection picks AVX2/SSE/NEON).
   Default published artifacts are portable-with-runtime-dispatch.
-- **PGO** wired into the release build via `xtask`, measured against non-PGO.
+- **PGO** (profile-guided optimization) is a release/packaging concern and is
+  **deferred to Phase 4**; Phase 1 CI notes it as a future step but does not
+  wire it in (it needs a representative training corpus and a two-pass build,
+  premature before correctness and perf baselines exist).
 - **`cargo-xtask`** for all automation: `xtask build-data`, `xtask gen-fixtures`,
   `xtask bench`, `xtask verify`. No scattered shell scripts.
 - **Platforms (Phase 1 CI matrix):** Linux x86-64 (AVX2 + SSE2 fallback), macOS
@@ -416,6 +457,11 @@ Five layers — this is where "extremely accurate and well tested" gets teeth.
 - The generic importer + pretokenizer-grammar classifier + tekken (Phase 3).
 - Python wheels / `PyO3` / `maturin`, the stable C ABI / `cbindgen`, CMake
   packaging (Phase 4).
+- **Batch / parallel APIs** (`encode_batch`, `BatchOpts`, `Batch`, the `rayon`
+  feature) — their primary consumer is the Python bindings, so they ship with
+  Phase 4.
+- **PGO** and **embedded (`include_bytes!`) blobs** — release/packaging
+  concerns, Phase 4.
 - GPU / multi-call streaming / async APIs (not planned unless a real need
   appears — YAGNI).
 
@@ -425,15 +471,77 @@ slots in as an extension, not a rewrite.
 
 ---
 
+## Appendix A — Phase 1 encodings reference
+
+All three Phase 1 encodings are derived from tiktoken; their exact vocab sizes
+and special-token ids are **pinned from the reference at export time** and frozen
+into the blob (§7) and fixtures (§10). The values below are the authoritative
+source definitions a plan-writer can size against.
+
+### A.1 `o200k_harmony` — definition
+
+`o200k_harmony` (used by GPT-OSS) is **`o200k_base`'s vocab and pretokenizer
+grammar, plus the harmony chat special tokens** — it is *not* a new grammar. So
+it reuses the o200k pretokenizer scanner and rank table verbatim; the only
+difference from `o200k_base` is an extended special-token set (e.g. `<|start|>`,
+`<|end|>`, `<|message|>`, `<|channel|>`, `<|constrain|>`, `<|return|>`,
+`<|call|>`, plus reserved slots). Concretely this means: **one extra data blob,
+one extra fixture set, zero new pretokenizer/scanner code.** The exact harmony
+special-token list and ids are pinned from the harmony reference during export.
+
+### A.2 Pretokenizer regex patterns (the grammars compiled by hand)
+
+These are tiktoken's public patterns; the SIMD scanners (Rungs 4–5) and the
+scalar fallback must reproduce them exactly.
+
+**cl100k_base:**
+
+```
+(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?!\S)|\s+
+```
+
+**o200k_base (and o200k_harmony):**
+
+```
+[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]*[\p{Ll}\p{Lm}\p{Lo}\p{M}]+(?i:'s|'t|'re|'ve|'m|'ll|'d)?|[^\r\n\p{L}\p{N}]?[\p{Lu}\p{Lt}\p{Lm}\p{Lo}\p{M}]+[\p{Ll}\p{Lm}\p{Lo}\p{M}]*(?i:'s|'t|'re|'ve|'m|'ll|'d)?|\p{N}{1,3}| ?[^\s\p{L}\p{N}]+[\r\n/]*|\s*[\r\n]+|\s+(?!\S)|\s+
+```
+
+Note the o200k grammar's richer Unicode-category logic (letter-case classes,
+combining marks `\p{M}`, the `[\r\n/]*` tail) versus cl100k's simpler `\p{L}+` —
+this difference is exactly why two scanners are needed.
+
+### A.3 Special tokens
+
+Base (OpenAI) ids — pinned from tiktoken at export:
+
+| Encoding | Base vocab (ranks) | Special tokens (name → id) |
+|----------|--------------------|-----------------------------|
+| `cl100k_base` | 0..100255 | `<\|endoftext\|>`→100257, `<\|fim_prefix\|>`→100258, `<\|fim_middle\|>`→100259, `<\|fim_suffix\|>`→100260, `<\|endofprompt\|>`→100276 |
+| `o200k_base` | 0..199997 | `<\|endoftext\|>`→199999, `<\|endofprompt\|>`→200018 |
+| `o200k_harmony` | 0..199997 (= o200k_base) | o200k_base specials **plus** the harmony chat specials (see A.1); full list pinned from the harmony reference at export |
+
+The loader and fixtures must treat these ids as authoritative; any drift from the
+reference is a hard failure.
+
+---
+
 ## 14. Open questions / risks
 
 - **Beating quicktok native is genuinely hard.** It is years of hand-tuning.
   Mitigation: phased checkpoints (A → B → target); correctness never blocked on
   hitting the perf ceiling; every rung benchmark-gated.
-- **Perfect-hash vs trie interplay:** the perfect hash and the 2-byte trie are
-  alternative/overlapping fast paths; we'll benchmark to decide their division
-  of labor (e.g. trie for longest-match walk, perfect hash for whole-piece and
-  merge-rank lookups). Resolve during Rungs 1–3.
+- **Two distinct hand-compiled SIMD scanners (highest implementation risk in
+  Phase 1).** cl100k and o200k have different Unicode-aware grammars (Appendix
+  A), so Rungs 4–5 mean two correct AVX2/SSE2/NEON scanners. Mitigation: each
+  scanner ships only after its matching scalar reference is fuzz-tested against
+  the regex oracle, and is differentially tested + fuzzed before being timed.
+  The always-correct scalar fallback is the safety net on every arch.
+- **Perfect-hash vs trie interplay (runtime, not format):** the perfect hash and
+  the 2-byte trie are alternative/overlapping fast paths; we'll benchmark to
+  decide their division of labor at runtime (e.g. trie for longest-match walk,
+  perfect hash for whole-piece and merge-rank lookups). Resolve during Rungs
+  1–3. The blob *format* carries both sections regardless (§7.1), so this is
+  decoupled from serialization.
 - **mmap vs read-into-buffer:** decide by benchmark + the `Sync` story; both are
   viable.
 - **`std::simd` stability:** if it cannot land on stable in time, hand intrinsics
