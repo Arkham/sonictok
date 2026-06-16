@@ -52,32 +52,10 @@ fn main() {
     );
 
     // exact BPE op counts (one pass)
-    sonictok_core::bpe::prof::PIECES.store(0, std::sync::atomic::Ordering::Relaxed);
-    // reset all
-    for c in [
-        &sonictok_core::bpe::prof::PIECES,
-        &sonictok_core::bpe::prof::SINGLE_BYTE,
-        &sonictok_core::bpe::prof::WHOLE_HIT,
-        &sonictok_core::bpe::prof::MERGE_PIECES,
-        &sonictok_core::bpe::prof::MERGE_ITERS,
-        &sonictok_core::bpe::prof::LOOKUPS,
-        &sonictok_core::bpe::prof::OUT_TOKENS,
-    ] {
-        c.store(0, std::sync::atomic::Ordering::Relaxed);
-    }
+    sonictok_core::vocab::prof::reset();
     let _ = t.encode_ordinary(&text);
-    println!("BPE op counts (one corpus pass):");
-    for (name, v) in sonictok_core::bpe::prof::snapshot() {
+    println!("new-BPE op counts (one corpus pass):");
+    for (name, v) in sonictok_core::vocab::prof::snapshot() {
         println!("  {name:14} {v}");
     }
-    let s = sonictok_core::bpe::prof::snapshot();
-    let pieces = s[0].1 as f64;
-    let whole = s[2].1 as f64;
-    let merge = s[3].1 as f64;
-    println!(
-        "\n  single-token pieces: {:.1}%   multi-token pieces: {:.1}%",
-        whole / pieces * 100.0,
-        merge / pieces * 100.0
-    );
-    println!("  lookups per token: {:.2}", s[5].1 as f64 / s[6].1 as f64);
 }

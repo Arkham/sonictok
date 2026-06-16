@@ -30,6 +30,54 @@ fn mix36(k: u64) -> u64 {
     m ^ (m >> 18)
 }
 
+/// Exact op counters (feature `profile`) for the new BPE path.
+#[cfg(feature = "profile")]
+pub mod prof {
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+    pub static NEXT_MATCH: AtomicU64 = AtomicU64::new(0);
+    pub static NM_STEPS: AtomicU64 = AtomicU64::new(0);
+    pub static TOKENS: AtomicU64 = AtomicU64::new(0);
+    pub static ISVALID: AtomicU64 = AtomicU64::new(0);
+    pub static ISVALID_MISS: AtomicU64 = AtomicU64::new(0);
+    pub static BACKTRACK: AtomicU64 = AtomicU64::new(0);
+    #[inline]
+    pub(super) fn inc(c: &AtomicU64) {
+        c.fetch_add(1, Relaxed);
+    }
+    pub fn reset() {
+        for c in [
+            &NEXT_MATCH,
+            &NM_STEPS,
+            &TOKENS,
+            &ISVALID,
+            &ISVALID_MISS,
+            &BACKTRACK,
+        ] {
+            c.store(0, Relaxed);
+        }
+    }
+    pub fn snapshot() -> [(&'static str, u64); 6] {
+        [
+            ("next_match", NEXT_MATCH.load(Relaxed)),
+            ("nm_steps", NM_STEPS.load(Relaxed)),
+            ("tokens", TOKENS.load(Relaxed)),
+            ("is_valid", ISVALID.load(Relaxed)),
+            ("is_valid_miss", ISVALID_MISS.load(Relaxed)),
+            ("backtrack", BACKTRACK.load(Relaxed)),
+        ]
+    }
+}
+#[cfg(feature = "profile")]
+macro_rules! pf {
+    ($c:ident) => {
+        prof::inc(&prof::$c)
+    };
+}
+#[cfg(not(feature = "profile"))]
+macro_rules! pf {
+    ($c:ident) => {{}};
+}
+
 pub struct Vocab {
     tlen: Vec<u8>, // token byte length (<= 255)
     n: u32,
@@ -61,6 +109,12 @@ pub struct Vocab {
     // is_valid_token_pair memo (pure-function cache)
     ivm: Vec<AtomicU32>,
     ivmask: usize,
+}
+
+thread_local! {
+    /// (toks, bitfield) scratch for the rare backtracking path.
+    static BT: std::cell::RefCell<(Vec<u32>, Vec<u64>)> =
+        const { std::cell::RefCell::new((Vec::new(), Vec::new())) };
 }
 
 #[inline]
@@ -140,11 +194,13 @@ impl Vocab {
                 RANK_MAX
             };
         }
+        pf!(NEXT_MATCH);
         let idx = ((text[0] as usize) << 8) | text[1] as usize;
         let mut node = self.r2node[idx];
         let mut best = self.r2best[idx];
         let mut i = 2;
         while node != 0 && i + 1 < len {
+            pf!(NM_STEPS);
             let k = ((node as u64) << 16) | ((text[i] as u64) << 8) | text[i + 1] as u64;
             let m = mix36(k);
             let want = ((m & E2_TAGMASK) << 38) | E2_USED;
@@ -248,6 +304,7 @@ impl Vocab {
     /// not have merged across the t1|t2 boundary). Memoized.
     #[inline]
     fn is_valid_token_pair(&self, t1: u32, t2: u32) -> bool {
+        pf!(ISVALID);
         let m = mix36(((t1 as u64) << 18) | t2 as u64);
         let h = (m >> IV_TAGBITS) as usize & self.ivmask;
         let want = 0x8000_0000u32 | (((m as u32) & ((1 << IV_TAGBITS) - 1)) << 1);
@@ -255,6 +312,7 @@ impl Vocab {
         if (s & 0xFFFF_FFFE) == want {
             return (s & 1) != 0;
         }
+        pf!(ISVALID_MISS);
         let res = self.ivtp_slow(t1, t2);
         self.ivm[h].store(want | res as u32, Relaxed);
         res
@@ -321,6 +379,7 @@ impl Vocab {
                     ok = false;
                     break;
                 }
+                pf!(TOKENS);
                 out.push(token);
                 last = token;
                 pos += self.tlen[token as usize] as usize;
@@ -333,46 +392,54 @@ impl Vocab {
             if ok {
                 return;
             }
+            pf!(BACKTRACK);
             out.truncate(out_start);
         }
-        // Full backtracking (rare).
-        let mut toks: Vec<u32> = Vec::new();
-        let words = (len + 1 + 63) >> 6;
-        let mut bf = vec![u64::MAX; words];
-        let is_set = |bf: &[u64], b: usize| (bf[b >> 6] >> (b & 63)) & 1 != 0;
+        // Full backtracking (rare). Reuse thread-local scratch (no per-piece alloc).
+        BT.with(|bt| {
+            let mut bt = bt.borrow_mut();
+            let (toks, bf) = &mut *bt;
+            toks.clear();
+            let words = (len + 1 + 63) >> 6;
+            bf.clear();
+            bf.resize(words, u64::MAX);
+            let is_set = |bf: &[u64], b: usize| (bf[b >> 6] >> (b & 63)) & 1 != 0;
 
-        let mut pos = 0usize;
-        let mut next_token = first;
-        while next_token != RANK_MAX {
-            let mut token = next_token;
-            let last = toks.last().copied().unwrap_or(RANK_MAX);
-            loop {
-                let end = pos + self.tlen[token as usize] as usize;
-                if is_set(&bf, end) && (last == RANK_MAX || self.is_valid_token_pair(last, token)) {
-                    toks.push(token);
-                    pos = end;
-                    next_token = if pos < len {
-                        self.next_match(&text[pos..])
-                    } else {
-                        RANK_MAX
-                    };
+            let mut pos = 0usize;
+            let mut next_token = first;
+            while next_token != RANK_MAX {
+                let mut token = next_token;
+                let last = toks.last().copied().unwrap_or(RANK_MAX);
+                loop {
+                    let end = pos + self.tlen[token as usize] as usize;
+                    if is_set(bf, end)
+                        && (last == RANK_MAX || self.is_valid_token_pair(last, token))
+                    {
+                        toks.push(token);
+                        pos = end;
+                        next_token = if pos < len {
+                            self.next_match(&text[pos..])
+                        } else {
+                            RANK_MAX
+                        };
+                        break;
+                    }
+                    let shorter = self.next_prefix(token);
+                    if shorter != RANK_MAX {
+                        token = shorter;
+                        continue;
+                    }
+                    bf[pos >> 6] &= !(1u64 << (pos & 63));
+                    if !toks.is_empty() {
+                        toks.pop();
+                        pos -= self.tlen[last as usize] as usize;
+                    }
+                    next_token = last;
                     break;
                 }
-                let shorter = self.next_prefix(token);
-                if shorter != RANK_MAX {
-                    token = shorter;
-                    continue;
-                }
-                bf[pos >> 6] &= !(1u64 << (pos & 63));
-                if !toks.is_empty() {
-                    toks.pop();
-                    pos -= self.tlen[last as usize] as usize;
-                }
-                next_token = last;
-                break;
             }
-        }
-        out.extend_from_slice(&toks);
+            out.extend_from_slice(toks);
+        });
     }
 
     pub fn from_pairs(pairs: impl IntoIterator<Item = (Vec<u8>, Rank)>) -> Self {
