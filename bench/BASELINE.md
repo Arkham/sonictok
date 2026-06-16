@@ -66,6 +66,19 @@ Remaining path to quicktok-native (high effort, best done supervised): hand-
 compiled SIMD pretokenizer (Rung 4) and the 2-byte trie + dense validity memos
 (quicktok's structural wins). These are the ~1.85× still on the table.
 
+## Parallel batch (rayon, `parallel` feature, default on)
+
+`encode_batch` over `bench/corpus.txt` split into paragraphs, M3 Pro (11 cores):
+
+| | MiB/s | MB/s | vs single-thread |
+|--|------:|-----:|-----------------:|
+| sonictok `encode_batch` | ~526 | ~552 | 6.2× |
+| quicktok `encode_batch` (8 thread) | ~725 | 760 | — |
+
+Exactness-safe (per-document `encode_ordinary`, already verified). A strong,
+reliable multi-core win; further gains would come from raising the single-thread
+floor (the supervised structural work above).
+
 ## sonictok targets (single-thread, this machine)
 
 - **Checkpoint A** — beat every other exact tokenizer (≥ bpe-openai class).

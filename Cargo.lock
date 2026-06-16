@@ -740,6 +740,7 @@ dependencies = [
  "base64",
  "criterion",
  "proptest",
+ "rayon",
  "serde",
  "serde_json",
  "sonictok-core",

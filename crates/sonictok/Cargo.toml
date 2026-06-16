@@ -9,6 +9,11 @@ license.workspace = true
 sonictok-core.workspace = true
 sonictok-data.workspace = true
 thiserror.workspace = true
+rayon = { version = "1", optional = true }
+
+[features]
+default = ["parallel"]
+parallel = ["dep:rayon"]
 
 [dev-dependencies]
 sonictok-core.workspace = true

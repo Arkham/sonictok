@@ -24,6 +24,11 @@ fn bench_encode(c: &mut Criterion) {
             std::hint::black_box(n)
         })
     });
+    // Parallel batch (rayon) — split into paragraphs like quicktok's bench.
+    let docs: Vec<&str> = text.split("\n\n").filter(|s| !s.is_empty()).collect();
+    g.bench_function("encode_batch", |b| {
+        b.iter(|| std::hint::black_box(t.encode_batch(std::hint::black_box(&docs))))
+    });
     g.finish();
 }
 

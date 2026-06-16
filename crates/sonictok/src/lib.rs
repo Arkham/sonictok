@@ -120,6 +120,47 @@ impl Tokenizer {
         self.engine().count(text)
     }
 
+    /// Encode many documents into one flat id buffer plus offsets:
+    /// document `i` is `tokens[offsets[i]..offsets[i + 1]]` (offsets has
+    /// `texts.len() + 1` entries). `encode_ordinary` semantics per document.
+    /// Parallel across documents with the `parallel` feature (default on);
+    /// `Tokenizer` is `Sync`, so this is lock-free.
+    pub fn encode_batch(&self, texts: &[&str]) -> Batch {
+        let per_doc: Vec<Vec<u32>> = self.encode_each(texts);
+        let mut offsets = Vec::with_capacity(texts.len() + 1);
+        let total: usize = per_doc.iter().map(Vec::len).sum();
+        let mut tokens = Vec::with_capacity(total);
+        offsets.push(0i64);
+        for ids in &per_doc {
+            tokens.extend_from_slice(ids);
+            offsets.push(tokens.len() as i64);
+        }
+        Batch { tokens, offsets }
+    }
+
+    /// Per-document token counts (for budgeting), parallel with `parallel`.
+    pub fn count_batch(&self, texts: &[&str]) -> Vec<usize> {
+        #[cfg(feature = "parallel")]
+        {
+            use rayon::prelude::*;
+            texts.par_iter().map(|t| self.count(t)).collect()
+        }
+        #[cfg(not(feature = "parallel"))]
+        {
+            texts.iter().map(|t| self.count(t)).collect()
+        }
+    }
+
+    #[cfg(feature = "parallel")]
+    fn encode_each(&self, texts: &[&str]) -> Vec<Vec<u32>> {
+        use rayon::prelude::*;
+        texts.par_iter().map(|t| self.encode_ordinary(t)).collect()
+    }
+    #[cfg(not(feature = "parallel"))]
+    fn encode_each(&self, texts: &[&str]) -> Vec<Vec<u32>> {
+        texts.iter().map(|t| self.encode_ordinary(t)).collect()
+    }
+
     pub fn decode(&self, ids: &[u32]) -> Result<String, DecodeError> {
         let bytes = self.decode_bytes(ids)?;
         Ok(String::from_utf8_lossy(&bytes).into_owned())
@@ -163,6 +204,12 @@ impl Tokenizer {
             }
         }
     }
+}
+
+/// Flat batch result: `tokens[offsets[i]..offsets[i + 1]]` is document `i`.
+pub struct Batch {
+    pub tokens: Vec<u32>,
+    pub offsets: Vec<i64>,
 }
 
 /// Bundled-encoding lookup: finds vendored blobs under the repo `data/` dir.
