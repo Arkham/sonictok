@@ -1,9 +1,9 @@
 //! The encode/decode engine over a loaded vocab. Generic over the pretokenizer
 //! and rank backing so optimization rungs slot in without touching this layer.
-use crate::bpe::byte_pair_encode;
 use crate::pretok::{Grammar, Pretokenizer, Scanner};
-use crate::rank::{Rank, RankLookup};
+use crate::rank::Rank;
 use crate::specials::SpecialTokens;
+use crate::vocab::Vocab;
 
 /// Disallowed-special error on the special-aware `encode` path.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,22 +21,22 @@ pub trait Decoder {
     fn bytes_for(&self, id: Rank) -> Option<&[u8]>;
 }
 
-pub struct Engine<'a, R: RankLookup, D: Decoder> {
-    pub ranks: &'a R,
+pub struct Engine<'a, D: Decoder> {
+    pub vocab: &'a Vocab,
     pub decoder: &'a D,
     pub specials: &'a SpecialTokens,
     pub grammar: Grammar,
 }
 
-impl<'a, R: RankLookup, D: Decoder> Engine<'a, R, D> {
+impl<'a, D: Decoder> Engine<'a, D> {
     pub fn new(
-        ranks: &'a R,
+        vocab: &'a Vocab,
         decoder: &'a D,
         specials: &'a SpecialTokens,
         grammar: Grammar,
     ) -> Self {
         Self {
-            ranks,
+            vocab,
             decoder,
             specials,
             grammar,
@@ -50,9 +50,8 @@ impl<'a, R: RankLookup, D: Decoder> Engine<'a, R, D> {
 
     fn encode_ordinary_bytes(&self, bytes: &[u8], out: &mut Vec<Rank>) {
         let mut pre = Scanner::new(self.grammar);
-        let mut parts = Vec::with_capacity(32);
         while let Some((a, z)) = pre.next_piece(bytes) {
-            byte_pair_encode(&bytes[a..z], self.ranks, &mut parts, out);
+            self.vocab.encode(&bytes[a..z], out);
         }
     }
 
@@ -139,7 +138,7 @@ impl<'a, R: RankLookup, D: Decoder> Engine<'a, R, D> {
 mod tests {
     use super::*;
     use crate::pretok::Grammar;
-    use crate::rank::RankMap;
+    use crate::vocab::Vocab;
 
     struct VecDecoder(Vec<Option<Vec<u8>>>);
     impl Decoder for VecDecoder {
@@ -149,10 +148,10 @@ mod tests {
     }
 
     // Build a byte-only vocab (ids 0..256 == bytes) + decoder for round-trip.
-    fn byte_vocab() -> (RankMap, VecDecoder) {
+    fn byte_vocab() -> (Vocab, VecDecoder) {
         let pairs: Vec<(Vec<u8>, Rank)> = (0u16..256).map(|b| (vec![b as u8], b as Rank)).collect();
         let dec: Vec<Option<Vec<u8>>> = (0u16..256).map(|b| Some(vec![b as u8])).collect();
-        (RankMap::from_pairs(pairs), VecDecoder(dec))
+        (Vocab::from_pairs(pairs), VecDecoder(dec))
     }
 
     #[test]

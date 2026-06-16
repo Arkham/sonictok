@@ -3,6 +3,45 @@
 //! broken leftmost (strict `<`). Single-byte and whole-piece are shortcuts.
 use crate::rank::{RANK_MAX, Rank, RankLookup};
 
+/// Exact operation counters (feature `profile`), to attribute BPE cost.
+#[cfg(feature = "profile")]
+pub mod prof {
+    use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
+    pub static PIECES: AtomicU64 = AtomicU64::new(0);
+    pub static SINGLE_BYTE: AtomicU64 = AtomicU64::new(0);
+    pub static WHOLE_HIT: AtomicU64 = AtomicU64::new(0);
+    pub static MERGE_PIECES: AtomicU64 = AtomicU64::new(0);
+    pub static MERGE_ITERS: AtomicU64 = AtomicU64::new(0);
+    pub static LOOKUPS: AtomicU64 = AtomicU64::new(0); // get() calls (whole + byte_id + pair_rank)
+    pub static OUT_TOKENS: AtomicU64 = AtomicU64::new(0);
+    #[inline]
+    pub(super) fn inc(c: &AtomicU64, n: u64) {
+        c.fetch_add(n, Relaxed);
+    }
+    pub fn snapshot() -> [(&'static str, u64); 7] {
+        [
+            ("pieces", PIECES.load(Relaxed)),
+            ("single_byte", SINGLE_BYTE.load(Relaxed)),
+            ("whole_hit", WHOLE_HIT.load(Relaxed)),
+            ("merge_pieces", MERGE_PIECES.load(Relaxed)),
+            ("merge_iters", MERGE_ITERS.load(Relaxed)),
+            ("lookups", LOOKUPS.load(Relaxed)),
+            ("out_tokens", OUT_TOKENS.load(Relaxed)),
+        ]
+    }
+}
+
+#[cfg(feature = "profile")]
+macro_rules! prof_inc {
+    ($c:ident, $n:expr) => {
+        prof::inc(&prof::$c, $n)
+    };
+}
+#[cfg(not(feature = "profile"))]
+macro_rules! prof_inc {
+    ($c:ident, $n:expr) => {{}};
+}
+
 /// A working part: (byte offset, rank of the pair with the next part, token id
 /// of the token starting here). Tracking the id lets emission be lookup-free.
 type Part = (u32, Rank, Rank);
@@ -29,14 +68,21 @@ pub fn byte_pair_encode<R: RankLookup>(
     out: &mut Vec<Rank>,
 ) {
     debug_assert!(!piece.is_empty());
+    prof_inc!(PIECES, 1);
+    prof_inc!(OUT_TOKENS, 1); // approx; corrected for merge pieces below
     if piece.len() == 1 {
+        prof_inc!(SINGLE_BYTE, 1);
+        prof_inc!(LOOKUPS, 1);
         out.push(ranks.get(piece).expect("single byte must be a token"));
         return;
     }
+    prof_inc!(LOOKUPS, 1);
     if let Some(t) = ranks.get(piece) {
+        prof_inc!(WHOLE_HIT, 1);
         out.push(t);
         return;
     }
+    prof_inc!(MERGE_PIECES, 1);
 
     // parts[k] = (offset, pair-rank with next, token id at k). The last entry is
     // the end sentinel (offset = piece.len()).
@@ -59,7 +105,10 @@ pub fn byte_pair_encode<R: RankLookup>(
     }
     parts.push((n as u32, RANK_MAX, RANK_MAX));
 
+    prof_inc!(LOOKUPS, n as u64); // initial byte_id lookups
     while min_rank.0 != RANK_MAX {
+        prof_inc!(MERGE_ITERS, 1);
+        prof_inc!(LOOKUPS, if min_rank.1 > 0 { 2 } else { 1 }); // pair_rank calls
         let i = min_rank.1;
         // The triggering pair rank IS the id of the merged token starting at i.
         parts[i].2 = min_rank.0;
@@ -78,6 +127,7 @@ pub fn byte_pair_encode<R: RankLookup>(
     }
 
     // Emit tracked ids (no re-lookup); skip the end sentinel.
+    prof_inc!(OUT_TOKENS, (parts.len() - 2) as u64); // correct the +1 approx above
     for &(_, _, id) in &parts[..parts.len() - 1] {
         out.push(id);
     }

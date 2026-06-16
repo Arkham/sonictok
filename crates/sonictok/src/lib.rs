@@ -8,8 +8,9 @@ use std::path::Path;
 
 use sonictok_core::encoding::{Decoder, Engine};
 use sonictok_core::pretok::Grammar;
-use sonictok_core::rank::{Rank, RankMap};
+use sonictok_core::rank::Rank;
 use sonictok_core::specials::SpecialTokens;
+use sonictok_core::vocab::Vocab;
 use sonictok_data::VocabBlob;
 
 /// Map a bundled encoding name to its pretokenizer grammar.
@@ -41,7 +42,7 @@ impl Decoder for DenseDecoder {
 pub struct Tokenizer {
     encoding: String,
     grammar: Grammar,
-    ranks: RankMap,
+    vocab: Vocab,
     decoder: DenseDecoder,
     specials: SpecialTokens,
     n_vocab: usize,
@@ -65,12 +66,12 @@ impl Tokenizer {
         for (bytes, id) in &blob.ranks {
             by_id[*id as usize] = Some(bytes.clone());
         }
-        let ranks = RankMap::from_pairs(blob.ranks);
+        let vocab = Vocab::from_pairs(blob.ranks);
         let specials = SpecialTokens::new(blob.specials);
         Ok(Tokenizer {
             encoding: blob.name,
             grammar,
-            ranks,
+            vocab,
             decoder: DenseDecoder { by_id },
             specials,
             n_vocab,
@@ -88,8 +89,8 @@ impl Tokenizer {
         Self::from_blob(blob)
     }
 
-    fn engine(&self) -> Engine<'_, RankMap, DenseDecoder> {
-        Engine::new(&self.ranks, &self.decoder, &self.specials, self.grammar)
+    fn engine(&self) -> Engine<'_, DenseDecoder> {
+        Engine::new(&self.vocab, &self.decoder, &self.specials, self.grammar)
     }
 
     pub fn encode_ordinary(&self, text: &str) -> Vec<u32> {

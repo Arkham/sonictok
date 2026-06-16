@@ -14,6 +14,7 @@ rayon = { version = "1", optional = true }
 [features]
 default = ["parallel"]
 parallel = ["dep:rayon"]
+profile = ["sonictok-core/profile"]
 # Embed the bundled vocab blobs into the binary so get_encoding works with no
 # external data dir (used by the Python wheel / standalone deploys). ~7.4 MB.
 embed-data = []
@@ -30,3 +31,7 @@ criterion = { workspace = true }
 [[bench]]
 name = "encode"
 harness = false
+
+[[example]]
+name = "profile"
+required-features = ["profile"]
