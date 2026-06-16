@@ -3,6 +3,10 @@
 /// Decode the UTF-8 char starting at `i`. Returns (char, byte_len).
 #[inline]
 pub(crate) fn char_at(input: &[u8], i: usize) -> (char, usize) {
+    let b = input[i];
+    if b < 0x80 {
+        return (b as char, 1); // ASCII fast path: no UTF-8 decode
+    }
     // SAFETY: `input` always originates from a `&str` (encode operates on
     // `&str`), and every alternative advances by whole UTF-8 char widths, so `i`
     // is always on a char boundary; the tail is therefore valid UTF-8.
