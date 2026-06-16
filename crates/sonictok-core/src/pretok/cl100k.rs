@@ -21,71 +21,71 @@ impl Cl100kPretokenizer {
     }
 }
 
+/// End index of the cl100k piece starting at `start` (scalar; handles Unicode).
+pub fn piece_end(input: &[u8], start: usize) -> usize {
+    let (c0, w0) = char_at(input, start);
+
+    // Alt 1: (?i:'s|'t|'re|'ve|'m|'ll|'d)
+    if c0 == '\''
+        && let Some(len) = match_contraction(input, start)
+    {
+        return start + len;
+    }
+
+    // Alt 2: [^\r\n\p{L}\p{N}]? \p{L}+
+    {
+        let mut j = start;
+        let mut c = c0;
+        if !is_cr_or_lf(c) && !is_letter(c) && !is_number(c) {
+            let nj = j + w0;
+            if nj < input.len() {
+                let (c2, _) = char_at(input, nj);
+                if is_letter(c2) {
+                    j = nj;
+                    c = c2;
+                }
+            }
+        }
+        if is_letter(c) {
+            let mut k = j;
+            while k < input.len() {
+                let (ck, wk) = char_at(input, k);
+                if is_letter(ck) {
+                    k += wk;
+                } else {
+                    break;
+                }
+            }
+            return k;
+        }
+    }
+
+    // Alt 3: \p{N}{1,3}
+    if is_number(c0) {
+        return scan_number(input, start);
+    }
+
+    // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n]*
+    if let Some(end) = scan_punct(input, start, false) {
+        return end;
+    }
+
+    // Alt 5-7: whitespace cascade
+    if is_whitespace(c0) {
+        return scan_whitespace(input, start);
+    }
+
+    // Fallback: unreachable for valid inputs; guarantee progress.
+    start + w0.max(1)
+}
+
 impl Pretokenizer for Cl100kPretokenizer {
     fn next_piece(&mut self, input: &[u8]) -> Option<(usize, usize)> {
         let start = self.pos;
         if start >= input.len() {
             return None;
         }
-        let (c0, w0) = char_at(input, start);
-
-        // Alt 1: (?i:'s|'t|'re|'ve|'m|'ll|'d)
-        if c0 == '\''
-            && let Some(len) = match_contraction(input, start)
-        {
-            self.pos = start + len;
-            return Some((start, self.pos));
-        }
-
-        // Alt 2: [^\r\n\p{L}\p{N}]? \p{L}+
-        {
-            let mut j = start;
-            let mut c = c0;
-            if !is_cr_or_lf(c) && !is_letter(c) && !is_number(c) {
-                let nj = j + w0;
-                if nj < input.len() {
-                    let (c2, _) = char_at(input, nj);
-                    if is_letter(c2) {
-                        j = nj;
-                        c = c2;
-                    }
-                }
-            }
-            if is_letter(c) {
-                let mut k = j;
-                while k < input.len() {
-                    let (ck, wk) = char_at(input, k);
-                    if is_letter(ck) {
-                        k += wk;
-                    } else {
-                        break;
-                    }
-                }
-                self.pos = k;
-                return Some((start, k));
-            }
-        }
-
-        // Alt 3: \p{N}{1,3}
-        if is_number(c0) {
-            self.pos = scan_number(input, start);
-            return Some((start, self.pos));
-        }
-
-        // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n]*
-        if let Some(end) = scan_punct(input, start, false) {
-            self.pos = end;
-            return Some((start, end));
-        }
-
-        // Alt 5-7: whitespace cascade
-        if is_whitespace(c0) {
-            self.pos = scan_whitespace(input, start);
-            return Some((start, self.pos));
-        }
-
-        // Fallback: unreachable for valid inputs; guarantee progress.
-        self.pos = start + w0.max(1);
+        self.pos = piece_end(input, start);
         Some((start, self.pos))
     }
 }

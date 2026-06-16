@@ -49,9 +49,154 @@ impl<'a, D: Decoder> Engine<'a, D> {
     }
 
     fn encode_ordinary_bytes(&self, bytes: &[u8], out: &mut Vec<Rank>) {
-        let mut pre = Scanner::new(self.grammar);
-        while let Some((a, z)) = pre.next_piece(bytes) {
-            self.vocab.encode(&bytes[a..z], out);
+        match self.grammar {
+            Grammar::Cl100k => self.encode_cl100k_fused(bytes, out),
+            _ => {
+                let mut pre = Scanner::new(self.grammar);
+                while let Some((a, z)) = pre.next_piece(bytes) {
+                    self.vocab.encode(&bytes[a..z], out);
+                }
+            }
+        }
+    }
+
+    /// Fused single-pass cl100k product machine: pretok boundaries + token
+    /// emission in one loop over ASCII bytes; any non-ASCII contact falls back
+    /// to the exact scalar scanner for one piece (so output is byte-exact).
+    fn encode_cl100k_fused(&self, t: &[u8], out: &mut Vec<Rank>) {
+        use crate::pretok::cl100k::piece_end;
+        let l = t.len();
+        let mut p = 0usize;
+        let a_let = |b: u8| (b | 0x20).wrapping_sub(b'a') <= 25;
+        let a_dig = |b: u8| b.wrapping_sub(b'0') <= 9;
+        let a_ws = |b: u8| b.wrapping_sub(9) <= 4 || b == b' ';
+        let a_pun = |b: u8| b < 0x80 && !a_ws(b) && !a_let(b) && !a_dig(b);
+        while p < l {
+            let b0 = t[p];
+            let mut fb = b0 >= 0x80;
+            let mut adv = 0usize;
+            if !fb {
+                'ascii: {
+                    // Alt 1: '(?i:[sdmt]|ll|ve|re)
+                    if b0 == b'\'' && p + 1 < l {
+                        let c1 = t[p + 1] | 0x20;
+                        if c1 == b's' || c1 == b'd' || c1 == b'm' || c1 == b't' {
+                            self.vocab.encode(&t[p..p + 2], out);
+                            adv = 2;
+                            break 'ascii;
+                        }
+                        if p + 2 < l {
+                            let c2 = t[p + 2] | 0x20;
+                            if (c1 == b'l' && c2 == b'l')
+                                || (c1 == b'v' && c2 == b'e')
+                                || (c1 == b'r' && c2 == b'e')
+                            {
+                                self.vocab.encode(&t[p..p + 3], out);
+                                adv = 3;
+                                break 'ascii;
+                            }
+                        }
+                    }
+                    // Alt 2: [^\r\n\p{L}\p{N}]? \p{L}+
+                    let ls = if a_let(b0) {
+                        p
+                    } else if b0 < 0x80
+                        && !a_dig(b0)
+                        && b0 != b'\r'
+                        && b0 != b'\n'
+                        && p + 1 < l
+                        && a_let(t[p + 1])
+                    {
+                        p + 1
+                    } else {
+                        usize::MAX
+                    };
+                    if ls != usize::MAX {
+                        let mut we = ls;
+                        while we < l && a_let(t[we]) {
+                            we += 1;
+                        }
+                        if we < l && t[we] >= 0x80 {
+                            fb = true;
+                            break 'ascii;
+                        }
+                        self.vocab.encode(&t[p..we], out);
+                        adv = we - p;
+                        break 'ascii;
+                    }
+                    // Alt 3: \p{N}{1,3}
+                    if a_dig(b0) {
+                        let mut q = p + 1;
+                        let mut c = 1;
+                        while q < l && c < 3 && a_dig(t[q]) {
+                            q += 1;
+                            c += 1;
+                        }
+                        if c < 3 && q < l && t[q] >= 0x80 {
+                            fb = true;
+                            break 'ascii;
+                        }
+                        self.vocab.encode(&t[p..q], out);
+                        adv = q - p;
+                        break 'ascii;
+                    }
+                    // Alt 4:  ?[^\s\p{L}\p{N}]+[\r\n]*
+                    {
+                        let mut q = p + usize::from(b0 == b' ');
+                        let s4 = q;
+                        while q < l && a_pun(t[q]) {
+                            q += 1;
+                        }
+                        if q > s4 {
+                            if q < l && t[q] >= 0x80 {
+                                fb = true;
+                                break 'ascii;
+                            }
+                            while q < l && (t[q] == b'\r' || t[q] == b'\n') {
+                                q += 1;
+                            }
+                            self.vocab.encode(&t[p..q], out);
+                            adv = q - p;
+                            break 'ascii;
+                        }
+                    }
+                    // Alt 5-7: whitespace cascade (cl100k order)
+                    if a_ws(b0) {
+                        let mut e = p;
+                        let mut lastnl = usize::MAX;
+                        while e < l && a_ws(t[e]) {
+                            if t[e] == b'\r' || t[e] == b'\n' {
+                                lastnl = e;
+                            }
+                            e += 1;
+                        }
+                        if e < l && t[e] >= 0x80 {
+                            fb = true;
+                            break 'ascii;
+                        }
+                        let plen = if e == l {
+                            e - p
+                        } else if lastnl != usize::MAX {
+                            lastnl + 1 - p
+                        } else if e - p > 1 {
+                            e - p - 1
+                        } else {
+                            1
+                        };
+                        self.vocab.encode(&t[p..p + plen], out);
+                        adv = plen;
+                        break 'ascii;
+                    }
+                    fb = true; // unreachable for ASCII
+                }
+            }
+            if fb {
+                let end = piece_end(t, p);
+                self.vocab.encode(&t[p..end], out);
+                p = end;
+            } else {
+                p += adv;
+            }
         }
     }
 
