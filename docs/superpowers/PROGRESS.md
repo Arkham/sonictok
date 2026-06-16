@@ -86,9 +86,36 @@ catches correctness, but they're large enough to warrant review:
    longest-match / merge lookups.
 3. **PGO** and a `native`/`portable` build-profile split (Phase 4 packaging).
 
+## Beyond the ladder: product surface (reliable, exactness-safe)
+
+With single-thread blocked on the risky structural work, added high-value
+product features instead (all byte-exact, all tested):
+
+- **Parallel batch** (`encode_batch`/`count_batch`, rayon, `parallel` feature):
+  **~526 MiB/s (6.2×)** on 11 cores; per-doc encode is the already-verified path.
+- **Stable C ABI** (`crates/sonictok-cabi` → `libsonictok.{a,dylib}` +
+  `include/sonictok.h`): load/encode/decode/count/free over `extern "C"`.
+  Verified by a clang-built C smoke test (`cargo run -p xtask -- test-cabi`).
+- **Python bindings** (`bindings/python`, PyO3 abi3 + maturin, tiktoken-style
+  API: `get_encoding`, `encode_ordinary`, `encode(allowed_special=...)`,
+  `encode_with_special`, `decode`, `count`, `encode_batch`, `.name`,
+  `.n_vocab`). **Byte-exact vs real tiktoken on all three encodings**; GIL
+  released during encode/batch. 6 pytest cases.
+- **`embed-data` feature**: `include_bytes!` the vocab blobs so the binary/wheel
+  is self-contained (verified `import sonictok` from /tmp with no data dir).
+
 ## Phase status vs the spec
 
 - Phase 1 (core + OpenAI encodings): **complete** and exact.
 - Phase 2 (open-model encodings llama3/qwen3 + NFC): not started.
 - Phase 3 (generic importer): not started.
-- Phase 4 (bindings/packaging, batch APIs, PGO): not started.
+- Phase 4 (bindings/packaging, batch APIs): **substantially done** — C ABI,
+  Python wheel (PyO3/maturin), parallel batch, embedded data all landed. Left:
+  CMake/`find_package`, published wheels/CI matrix, PGO.
+
+## Final tally (this session)
+
+From an exact-but-slow Plan-1 cl100k baseline to: 3 encodings (cl100k, o200k,
+o200k_harmony) byte-exact; 2.43× single-thread (87 MiB/s) + 6.2× batch (526
+MiB/s); Rust + C + Python surfaces; self-contained data. All committed in small
+steps with fixtures + oracle-diff + proptest green throughout.

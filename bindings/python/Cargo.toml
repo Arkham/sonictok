@@ -9,5 +9,5 @@ name = "sonictok"
 crate-type = ["cdylib"]
 
 [dependencies]
-api = { package = "sonictok", path = "../../crates/sonictok" }
+api = { package = "sonictok", path = "../../crates/sonictok", features = ["embed-data"] }
 pyo3 = { version = "0.22", features = ["abi3-py39", "extension-module"] }

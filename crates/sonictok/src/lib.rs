@@ -212,14 +212,41 @@ pub struct Batch {
     pub offsets: Vec<i64>,
 }
 
-/// Bundled-encoding lookup: finds vendored blobs under the repo `data/` dir.
+/// Embedded vocab blobs (feature `embed-data`), so the binary is self-contained.
+#[cfg(feature = "embed-data")]
+fn embedded_blob(name: &str) -> Option<&'static [u8]> {
+    match name {
+        "cl100k_base" => Some(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/cl100k_base.stb"
+        ))),
+        "o200k_base" => Some(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/o200k_base.stb"
+        ))),
+        "o200k_harmony" => Some(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../data/o200k_harmony.stb"
+        ))),
+        _ => None,
+    }
+}
+
+/// Bundled-encoding lookup. Resolution order: `SONICTOK_DATA` env override, then
+/// embedded blobs (feature `embed-data`), then the in-repo `data/` dir (dev).
 pub fn get_encoding(name: &str) -> Result<Tokenizer, Error> {
-    let data_dir = std::env::var("SONICTOK_DATA")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data")
-        });
-    Tokenizer::load_dir(&data_dir, name)
+    if grammar_for(name).is_none() {
+        return Err(Error::UnsupportedEncoding(name.to_string()));
+    }
+    if let Ok(dir) = std::env::var("SONICTOK_DATA") {
+        return Tokenizer::load_dir(std::path::Path::new(&dir), name);
+    }
+    #[cfg(feature = "embed-data")]
+    if let Some(bytes) = embedded_blob(name) {
+        return Tokenizer::from_blob(VocabBlob::from_bytes(bytes)?);
+    }
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data");
+    Tokenizer::load_dir(&dir, name)
 }
 
 #[cfg(test)]
