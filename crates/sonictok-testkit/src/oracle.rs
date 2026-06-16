@@ -30,12 +30,18 @@ impl Oracle {
     /// encode_ordinary via the reference regex.
     pub fn encode_ordinary(&self, text: &str) -> Vec<Rank> {
         let mut out = Vec::new();
+        let mut parts = Vec::new();
         let mut last = 0;
         for m in self.re.find_iter(text) {
             let m = m.unwrap();
             debug_assert_eq!(m.start(), last, "regex left a gap");
             last = m.end();
-            byte_pair_encode(&text.as_bytes()[m.start()..m.end()], &self.ranks, &mut out);
+            byte_pair_encode(
+                &text.as_bytes()[m.start()..m.end()],
+                &self.ranks,
+                &mut parts,
+                &mut out,
+            );
         }
         out
     }

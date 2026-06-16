@@ -50,8 +50,9 @@ impl<'a, R: RankLookup, D: Decoder> Engine<'a, R, D> {
 
     fn encode_ordinary_bytes(&self, bytes: &[u8], out: &mut Vec<Rank>) {
         let mut pre = Scanner::new(self.grammar);
+        let mut parts: Vec<(usize, Rank)> = Vec::with_capacity(32);
         while let Some((a, z)) = pre.next_piece(bytes) {
-            byte_pair_encode(&bytes[a..z], self.ranks, out);
+            byte_pair_encode(&bytes[a..z], self.ranks, &mut parts, out);
         }
     }
 

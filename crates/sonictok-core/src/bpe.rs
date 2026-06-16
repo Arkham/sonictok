@@ -15,9 +15,15 @@ fn pair_rank<R: RankLookup>(piece: &[u8], parts: &[(usize, Rank)], i: usize, ran
 }
 
 /// Encode one non-empty pretokenized `piece` into token ids, appended to `out`.
+/// `parts` is a caller-owned scratch buffer reused across pieces (cleared here).
 /// Precondition: every single byte of `piece` is present in `ranks` (true for
 /// all tiktoken byte-level vocabs).
-pub fn byte_pair_encode<R: RankLookup>(piece: &[u8], ranks: &R, out: &mut Vec<Rank>) {
+pub fn byte_pair_encode<R: RankLookup>(
+    piece: &[u8],
+    ranks: &R,
+    parts: &mut Vec<(usize, Rank)>,
+    out: &mut Vec<Rank>,
+) {
     debug_assert!(!piece.is_empty());
     if piece.len() == 1 {
         out.push(ranks.get(piece).expect("single byte must be a token"));
@@ -29,7 +35,7 @@ pub fn byte_pair_encode<R: RankLookup>(piece: &[u8], ranks: &R, out: &mut Vec<Ra
     }
 
     // parts[k] = (byte offset of part k, rank of the pair starting at part k)
-    let mut parts: Vec<(usize, Rank)> = Vec::with_capacity(piece.len() + 1);
+    parts.clear();
     let mut min_rank: (Rank, usize) = (RANK_MAX, usize::MAX);
     for i in 0..piece.len() - 1 {
         let rank = ranks.get(&piece[i..i + 2]).unwrap_or(RANK_MAX);
@@ -84,7 +90,7 @@ mod tests {
     fn single_byte() {
         let v = toy();
         let mut out = vec![];
-        byte_pair_encode(b"a", &v, &mut out);
+        byte_pair_encode(b"a", &v, &mut Vec::new(), &mut out);
         assert_eq!(out, vec![b'a' as Rank]);
     }
 
@@ -92,7 +98,7 @@ mod tests {
     fn whole_piece_shortcut() {
         let v = toy();
         let mut out = vec![];
-        byte_pair_encode(b"abc", &v, &mut out);
+        byte_pair_encode(b"abc", &v, &mut Vec::new(), &mut out);
         assert_eq!(out, vec![301]); // "abc" is a single token
     }
 
@@ -101,7 +107,7 @@ mod tests {
         let v = toy();
         let mut out = vec![];
         // "abx": "ab"(300) merges, then "abx" not a token -> ["ab","x"]
-        byte_pair_encode(b"abx", &v, &mut out);
+        byte_pair_encode(b"abx", &v, &mut Vec::new(), &mut out);
         assert_eq!(out, vec![300, b'x' as Rank]);
     }
 
@@ -109,7 +115,7 @@ mod tests {
     fn no_merges_falls_back_to_bytes() {
         let v = toy();
         let mut out = vec![];
-        byte_pair_encode(b"xy", &v, &mut out);
+        byte_pair_encode(b"xy", &v, &mut Vec::new(), &mut out);
         assert_eq!(out, vec![b'x' as Rank, b'y' as Rank]);
     }
 
@@ -121,7 +127,7 @@ mod tests {
         pairs.push((b"aa".to_vec(), 300)); // both "aa" pairs in "aaa" share rank 300
         let v = RankMap::from_pairs(pairs);
         let mut out = vec![];
-        byte_pair_encode(b"aaa", &v, &mut out);
+        byte_pair_encode(b"aaa", &v, &mut Vec::new(), &mut out);
         // leftmost merge: ["aa","a"]
         assert_eq!(out, vec![300, b'a' as Rank]);
     }
