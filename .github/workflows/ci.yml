@@ -21,7 +21,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Install the components rust-toolchain.toml pins, so rustup doesn't try to
+      # auto-add them mid-maturin-build (which conflicts on the runner).
       - uses: dtolnay/rust-toolchain@1.95.0
+        with: { components: rustfmt, clippy }
       - uses: actions/setup-python@v5
         with: { python-version: "3.9" }
       - run: pip install maturin pytest
