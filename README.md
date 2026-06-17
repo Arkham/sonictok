@@ -6,8 +6,9 @@ Fast, exact BPE tokenizer in Rust. Byte-identical to tiktoken.
 `o200k_base`, `o200k_harmony` (vs tiktoken), `qwen3` (vs HF tokenizers, incl. NFC
 normalization), and `llama3` (vs HF tokenizers). Linear-time backtracking BPE
 (the `bpe`-crate algorithm) + 2-byte trie + fused product machines. Rust API,
-parallel batch, a stable C ABI, and Python bindings. **~129 MiB/s single-thread
-(~90% of quicktok-native), ~720 MiB/s batch (M3 Pro)** — see `bench/BASELINE.md`.
+parallel batch, a stable C ABI, and Python bindings. **cl100k ~182 MB/s
+single-thread, ~914 MB/s batch (M3 Pro) — faster than quicktok-native and ~10x
+tiktoken, byte-exact** — see `bench/BASELINE.md`.
 
 ### Rust
 
@@ -76,14 +77,30 @@ python tools/export_cl100k.py && cargo run -p xtask -- build-data cl100k_base
 python tools/gen_fixtures.py                                    # exactness vectors
 ```
 
-## Benchmark vs local quicktok
+## Benchmarks
+
+Single-thread `encode_ordinary` over `bench/corpus.txt` (Project Gutenberg
+*Moby-Dick*, 1.05 MB), Apple M3 Pro. sonictok is the project's own `cargo bench`
+median; quicktok is built and run locally (`-O3 -mcpu=native`, best-of-7);
+tiktoken 0.13 via Python. Token ids are **identical** across all three.
+
+| encoding | sonictok | quicktok native | tiktoken | vs quicktok | vs tiktoken |
+|----------|---------:|----------------:|---------:|------------:|------------:|
+| `cl100k_base` | **181.9 MB/s** | 160.4 MB/s | 19.2 MB/s | **+13%** | **~9.5x** |
+| `o200k_base`  | **163.9 MB/s** | 144.1 MB/s | 30.9 MB/s | **+14%** | **~5.3x** |
+
+Batch (`encode_batch`, all cores): **~914 MB/s** cl100k. Best-of single-thread
+hits ~190 MB/s cl100k; the table reports the steady-state criterion median.
+
+Reproduce:
 
 ```sh
-cargo run -p xtask -- bench-compare
+cargo bench -p sonictok --bench encode                 # criterion: cl100k/o200k + batch
+cargo run --release -p sonictok --example perfbench     # fast best-of/median harness
+cargo run -p xtask -- bench-compare                     # builds quicktok, diffs + times both
 ```
 
-Builds quicktok locally and runs both encoders on the identical corpus
-(`bench/corpus.txt`). See `bench/BASELINE.md` for the target to beat.
+See `bench/BASELINE.md` for methodology and the full history.
 
 ## Layout
 
