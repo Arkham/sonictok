@@ -6,7 +6,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.95.0
-        with: { components: rustfmt, clippy }
+        with:
+          components: rustfmt, clippy
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
@@ -24,9 +25,16 @@ jobs:
       # Install the components rust-toolchain.toml pins, so rustup doesn't try to
       # auto-add them mid-maturin-build (which conflicts on the runner).
       - uses: dtolnay/rust-toolchain@1.95.0
-        with: { components: rustfmt, clippy }
+        with:
+          components: rustfmt, clippy
       - uses: actions/setup-python@v5
         with: { python-version: "3.9" }
+      # maturin develop installs into an active virtualenv — create one and put it
+      # on PATH + VIRTUAL_ENV so the following steps use it.
+      - run: |
+          python -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
       - run: pip install maturin pytest
       - run: maturin develop --release
         working-directory: bindings/python
