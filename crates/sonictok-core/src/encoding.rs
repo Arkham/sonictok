@@ -48,6 +48,15 @@ impl<'a, D: Decoder> Engine<'a, D> {
         self.encode_ordinary_bytes(text.as_bytes(), out);
     }
 
+    /// Encode the piece `t[a..b]`. The fused product machines always derive
+    /// `a <= b <= t.len()` from the pretok scan, so we skip the slice bounds
+    /// check (mirrors quicktok's emit passing a raw `(ptr, len)`).
+    #[inline]
+    fn enc_piece(&self, t: &[u8], a: usize, b: usize, out: &mut Vec<Rank>) {
+        // SAFETY: a <= b <= t.len() for every call site (piece bounds).
+        self.vocab.encode(unsafe { t.get_unchecked(a..b) }, out);
+    }
+
     fn encode_ordinary_bytes(&self, bytes: &[u8], out: &mut Vec<Rank>) {
         match self.grammar {
             Grammar::Cl100k => self.encode_cl100k_fused(bytes, out, 3),
@@ -180,7 +189,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                     }
                     if e != 0 {
                         let end = o_contraction(t, e);
-                        self.vocab.encode(&t[p..end], out);
+                        self.enc_piece(t, p, end, out);
                         adv = end - p;
                         break 'ascii;
                     }
@@ -196,7 +205,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                             fb = true;
                             break 'ascii;
                         }
-                        self.vocab.encode(&t[p..q], out);
+                        self.enc_piece(t, p, q, out);
                         adv = q - p;
                         break 'ascii;
                     }
@@ -215,7 +224,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                             while q < l && (t[q] == b'\r' || t[q] == b'\n' || t[q] == b'/') {
                                 q += 1;
                             }
-                            self.vocab.encode(&t[p..q], out);
+                            self.enc_piece(t, p, q, out);
                             adv = q - p;
                             break 'ascii;
                         }
@@ -243,7 +252,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                         } else {
                             1
                         };
-                        self.vocab.encode(&t[p..p + plen], out);
+                        self.enc_piece(t, p, p + plen, out);
                         adv = plen;
                         break 'ascii;
                     }
@@ -252,7 +261,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
             }
             if fb {
                 let end = piece_end(t, p);
-                self.vocab.encode(&t[p..end], out);
+                self.enc_piece(t, p, end, out);
                 p = end;
             } else {
                 p += adv;
@@ -281,7 +290,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                     if b0 == b'\'' && p + 1 < l {
                         let c1 = t[p + 1] | 0x20;
                         if c1 == b's' || c1 == b'd' || c1 == b'm' || c1 == b't' {
-                            self.vocab.encode(&t[p..p + 2], out);
+                            self.enc_piece(t, p, p + 2, out);
                             adv = 2;
                             break 'ascii;
                         }
@@ -291,7 +300,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                                 || (c1 == b'v' && c2 == b'e')
                                 || (c1 == b'r' && c2 == b'e')
                             {
-                                self.vocab.encode(&t[p..p + 3], out);
+                                self.enc_piece(t, p, p + 3, out);
                                 adv = 3;
                                 break 'ascii;
                             }
@@ -320,7 +329,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                             fb = true;
                             break 'ascii;
                         }
-                        self.vocab.encode(&t[p..we], out);
+                        self.enc_piece(t, p, we, out);
                         adv = we - p;
                         break 'ascii;
                     }
@@ -336,7 +345,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                             fb = true;
                             break 'ascii;
                         }
-                        self.vocab.encode(&t[p..q], out);
+                        self.enc_piece(t, p, q, out);
                         adv = q - p;
                         break 'ascii;
                     }
@@ -355,7 +364,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                             while q < l && (t[q] == b'\r' || t[q] == b'\n') {
                                 q += 1;
                             }
-                            self.vocab.encode(&t[p..q], out);
+                            self.enc_piece(t, p, q, out);
                             adv = q - p;
                             break 'ascii;
                         }
@@ -383,7 +392,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
                         } else {
                             1
                         };
-                        self.vocab.encode(&t[p..p + plen], out);
+                        self.enc_piece(t, p, p + plen, out);
                         adv = plen;
                         break 'ascii;
                     }
@@ -392,7 +401,7 @@ impl<'a, D: Decoder> Engine<'a, D> {
             }
             if fb {
                 let end = piece_end(t, p, num_max);
-                self.vocab.encode(&t[p..end], out);
+                self.enc_piece(t, p, end, out);
                 p = end;
             } else {
                 p += adv;
