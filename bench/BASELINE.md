@@ -85,34 +85,104 @@ merge-reference, both cl100k + o200k).
 Reverted (measured, didn't pay): hashmap `(id,id)` memo (cache thrash), combined
 r2 array (wash), u16 narrow memo (branch overhead > cache win), `target-cpu=native`.
 
-## Final head-to-head (this M3 Pro, `bench/corpus.txt`, cl100k)
+## Session 2 — overtaking quicktok (autoresearch pass, 2026-06-17)
 
-| | sonictok | quicktok | ratio |
-|--|---------:|---------:|------:|
-| single-thread | ~135 MB/s | 149.5 MB/s | **0.90×** |
-| batch (all cores) | ~755 MB/s | 760 MB/s (8t) | **0.99×** |
+Picking up from ~129 MiB/s (~0.90× quicktok), a systematic autoresearch pass
+closed the gap and **passed quicktok native on both encodings**, byte-exact.
+Every kept change was confirmed with an **interleaved A/B** (see methodology
+below); fixtures + full-corpus oracle-diff + proptest stayed green throughout.
 
-Decisively faster than every other exact tokenizer (bpe-openai ~37, tiktoken ~14
-MB/s). Remaining single-thread gap is fine cache/codegen tuning; the CJK
-multibyte trie path (r3/encode_mb) is unimplemented (helps non-Latin, not this
-corpus).
+Fresh re-measurement of the references on this machine (2026-06-17), so the
+numbers below are all same-silicon/same-corpus:
 
-## Parallel batch (rayon, `parallel` feature, default on)
+| ref (cl100k / o200k single-thread) | cl100k | o200k |
+|------------------------------------|-------:|------:|
+| quicktok v0.4.0 (`-mcpu=native`, best-of-7) | 160.4 MB/s | 144.1 MB/s |
+| tiktoken 0.13 (Python, `encode_ordinary`)   |  19.2 MB/s |  30.9 MB/s |
 
-`encode_batch` over `bench/corpus.txt` split into paragraphs, M3 Pro (11 cores):
+### Kept changes (cl100k, single-thread, cumulative)
 
-| | MiB/s | MB/s | vs single-thread |
-|--|------:|-----:|-----------------:|
-| sonictok `encode_batch` | ~526 | ~552 | 6.2× |
-| quicktok `encode_batch` (8 thread) | ~725 | 760 | — |
+MB/s is best-of-min over `bench/corpus.txt`; Δ is the per-step interleaved-A/B
+result (paired rounds, win-rate). All byte-exact.
 
-Exactness-safe (per-document `encode_ordinary`, already verified). A strong,
-reliable multi-core win; further gains would come from raising the single-thread
-floor (the supervised structural work above).
+| Step | cl100k MB/s | Δ (interleaved) | What |
+|------|------------:|----------------:|------|
+| session-2 baseline | ~155 | — | end of Session 1 (elision-free trie walk) |
+| + bounds-check elision | ~157 | -1.7% | `get_unchecked` on computed-index hot loads in `next_match`, `encode_with_first` greedy, `is_valid` memo, `odd_lookup` |
+| + per-piece slice elision | ~157 | -0.6% | `enc_piece` passes `&t[p..end]` unchecked (mirrors quicktok's raw ptr,len), ~228K pieces/pass |
+| + e2 load factor 0.45→0.225 | ~168 | **-6.0%** (12/12) | bigger 2-byte-trie probe table → shorter probe chains |
+| + e2 load factor 0.225→0.11 | ~173 | -2.3% (11/12) | further; o200k also +5% |
+| + otab load factor 0.5→0.11 | ~183 | **-8.65%** (14/14) | the odd-depth lookup is hit at the end of *most* `next_match` walks — a hidden bottleneck |
+| + mix36 → pure odd-multiply | ~187 | -1.3% (11/14) | drop the xorshift/xorshift (still bijective mod 2^36 → index+tag reconstruct the key exactly) |
+| + drop dead `& 2^36` mask | **~190** | -0.8% (8/12) | callers read only bits [0,36); the mask was a no-op |
 
-## sonictok targets (single-thread, this machine)
+**Net Session 2: ~155 → ~190 MB/s best-of-min (~182 MB/s criterion median),
+-19–21% wall time.** The two probe-table load-factor cuts (e2, otab) are the
+bulk of it.
 
-- **Checkpoint A** — beat every other exact tokenizer (≥ bpe-openai class).
-- **Checkpoint B** — quicktok-class: within ~15–20% (≥ ~135 MB/s cl100k).
-- **Target** — beat quicktok native: **> 160.7 MB/s cl100k, > 145.5 MB/s o200k**
-  single-thread, byte-exact.
+### Reverted (measured, didn't pay — don't retry on M3)
+
+| Idea | Result | Why |
+|------|--------|-----|
+| `target-cpu=native` | wash | hot path not autovectorized; also breaks wheel/C-ABI portability |
+| u16 dense is_valid memo (4MB→2MB) | **-1.7%** | M3 caches are big — footprint reduction doesn't pay; sub-word atomics cost |
+| combine r2node+r2best → one u64 | wash | r2 is L1-hot; M3's load ports do the 2 loads in parallel |
+| `#[inline(always)]` next_match | **+12%** | flips LLVM's hot-loop codegen (quicktok warns of exactly this) |
+| `#[inline(always)]` encode_with_first | +1.5% | same family |
+| single-token-piece shortcut | +4.4% | added branch bloats the fused machine, disrupts codegen |
+| 256-byte byte-class LUT | +3% | M3 prefers cheap ALU over an L1 load on the scan critical path |
+| first-token peel / local hoists | wash | LLVM fat-LTO already does these |
+| otab/plk load factor below 0.11 | wash | past the knee; pure footprint for ~0 gain (and would overfit the cache) |
+
+**Theme:** control-flow / inlining changes lost **6/6**; every win was a data-
+structure or per-op-cost change. The driving insight came from *inverting* the
+failed u16-memo experiment — "M3 has big caches, so don't shrink footprint or
+trade ALU for memory." The symmetric move (grow the hot linear-probe tables to
+shorten chains; cheapen the per-step hash) produced every subsequent win.
+
+### Profile shift (samply, % of encode)
+
+| function | before | after |
+|----------|-------:|------:|
+| `Vocab::next_match` (trie walk) | 51% | 41% |
+| `encode_cl100k_fused` (pretok)  | 29% | 35% |
+| `encode_with_first` (greedy)    | 16% | 20% |
+| `ivtp_slow` (is_valid miss)     | <1% | ~1% |
+
+The probe-table work pulled the trie walk from dominant to roughly on par with
+pretok (which is now ~58% of encode at 311 MB/s `pretokenize_only`).
+
+### Measurement methodology (hard-won)
+
+- Variance on this M3 Pro is **contention / P-vs-E core migration**, NOT thermal
+  (idle at 47°C) and NOT corpus size (1× had lower CV than 4×). `taskpolicy -a`
+  is neutral; `-b` is 6× slower (E-cores) and *less* consistent.
+- Cross-run drift is ~3-8%; the **only trustworthy comparison is an interleaved
+  A/B** — build both binaries, alternate base/opt for N rounds, compare paired
+  min/median + win-rate. Sequential A/B (incl. `cargo bench --baseline` run after
+  the other) is order-confounded and can show the wrong sign.
+- Primary metric: criterion median + a fast best-of/min harness
+  (`examples/perfbench.rs`, with a median/min CV-gated retry).
+
+## Final head-to-head (this M3 Pro, `bench/corpus.txt`)
+
+sonictok = `cargo bench` criterion median; quicktok = local `-mcpu=native`
+best-of-7; tiktoken 0.13 via Python. **Token ids are identical across all three.**
+
+| | sonictok | quicktok native | tiktoken | vs quicktok | vs tiktoken |
+|--|---------:|----------------:|---------:|------------:|------------:|
+| cl100k single-thread | **181.9 MB/s** (~190 best-of) | 160.4 MB/s | 19.2 MB/s | **+13%** (med) / +18% (min) | **~9.5×** |
+| o200k single-thread  | **163.9 MB/s** | 144.1 MB/s | 30.9 MB/s | **+14%** | **~5.3×** |
+| cl100k batch (all cores) | **~914 MB/s** | 782.8 MB/s (8t) | — | +17% | — |
+
+sonictok is now the fastest exact tokenizer measured here — ahead of quicktok
+(the fastest C++ exact tokenizer), ~5–10× tiktoken, and far ahead of bpe-openai
+(~37 MB/s). The CJK multibyte trie path (r3/encode_mb) is still unimplemented
+(helps non-Latin, not this corpus) — the one remaining structural lever.
+
+## sonictok targets — ACHIEVED
+
+- **Checkpoint A** — beat every other exact tokenizer (≥ bpe-openai class). ✅
+- **Checkpoint B** — quicktok-class (within ~15–20%). ✅
+- **Target** — beat quicktok native (> 160.4 MB/s cl100k, > 144.1 MB/s o200k
+  single-thread, byte-exact). ✅ **181.9 / 163.9 MB/s.**
