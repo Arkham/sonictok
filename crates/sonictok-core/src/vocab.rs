@@ -25,9 +25,13 @@ const E2_BEST_NONE: u32 = 0x3_FFFF;
 /// aliases a different key, keeping the memo exact.
 #[inline]
 fn mix36(k: u64) -> u64 {
-    let mut m = k ^ (k >> 18);
-    m = m.wrapping_mul((0x9E37_79B9_7F4A_7C15 & 0xF_FFFF_FFFF) | 1) & 0xF_FFFF_FFFF;
-    m ^ (m >> 18)
+    // Pure odd-multiply by a 36-bit odd constant. Every caller reads only bits
+    // [0,36) of the result (index from [e2tb,36) via >>+&mask, tag from [0,25)),
+    // and those low bits are unaffected by the u64 wrap, so the final &2^36 mask
+    // is dead — dropped to shave one op off the hash critical path. The multiply
+    // is bijective mod 2^36 so index+tag still reconstruct the key exactly; the
+    // e2 table is byte-identical to the masked version (construction unchanged).
+    k.wrapping_mul((0x9E37_79B9_7F4A_7C15 & 0xF_FFFF_FFFF) | 1)
 }
 
 /// Exact op counters (feature `profile`) for the new BPE path.
@@ -195,19 +199,26 @@ impl Vocab {
             };
         }
         pf!(NEXT_MATCH);
+        // SAFETY (hottest function, ~50% of encode): every index below is proven
+        // in-bounds, so we elide bounds checks. idx = two u8s in [0,65535] and
+        // r2node/r2best are exactly 65536 long; h is always masked with e2mask
+        // and e2.len()==e2mask+1; the loop guard `i + 1 < len` keeps text[i] and
+        // text[i+1] in range; the trailing access is guarded by `i < len`.
         let idx = ((text[0] as usize) << 8) | text[1] as usize;
-        let mut node = self.r2node[idx];
-        let mut best = self.r2best[idx];
+        let mut node = unsafe { *self.r2node.get_unchecked(idx) };
+        let mut best = unsafe { *self.r2best.get_unchecked(idx) };
         let mut i = 2;
         while node != 0 && i + 1 < len {
             pf!(NM_STEPS);
-            let k = ((node as u64) << 16) | ((text[i] as u64) << 8) | text[i + 1] as u64;
+            let b0 = unsafe { *text.get_unchecked(i) };
+            let b1 = unsafe { *text.get_unchecked(i + 1) };
+            let k = ((node as u64) << 16) | ((b0 as u64) << 8) | b1 as u64;
             let m = mix36(k);
             let want = ((m & E2_TAGMASK) << 38) | E2_USED;
             let mut h = (m >> self.e2tb) as u32 & self.e2mask;
             let mut val = 0u64;
             loop {
-                let s = self.e2[h as usize];
+                let s = unsafe { *self.e2.get_unchecked(h as usize) };
                 if s == 0 {
                     break;
                 }
@@ -219,7 +230,7 @@ impl Vocab {
             }
             if val == 0 {
                 // no 2-byte step: an odd-depth token may extend one byte
-                let o = self.odd_lookup(node, text[i]);
+                let o = self.odd_lookup(node, b0);
                 if o != RANK_MAX {
                     best = o;
                 }
@@ -233,7 +244,7 @@ impl Vocab {
             i += 2;
         }
         if node != 0 && i < len {
-            let o = self.odd_lookup(node, text[i]);
+            let o = self.odd_lookup(node, unsafe { *text.get_unchecked(i) });
             if o != RANK_MAX {
                 best = o;
             }
@@ -250,7 +261,8 @@ impl Vocab {
         let want = k + 1;
         let mut h = mul_shift(k, self.omask);
         loop {
-            let s = self.otab[h as usize];
+            // SAFETY: h is always masked with omask and otab.len()==omask+1.
+            let s = unsafe { *self.otab.get_unchecked(h as usize) };
             if s == 0 {
                 return RANK_MAX;
             }
@@ -308,13 +320,15 @@ impl Vocab {
         let m = mix36(((t1 as u64) << 18) | t2 as u64);
         let h = (m >> IV_TAGBITS) as usize & self.ivmask;
         let want = 0x8000_0000u32 | (((m as u32) & ((1 << IV_TAGBITS) - 1)) << 1);
-        let s = self.ivm[h].load(Relaxed);
+        // SAFETY: h is masked with ivmask and ivm.len()==ivmask+1.
+        let slot = unsafe { self.ivm.get_unchecked(h) };
+        let s = slot.load(Relaxed);
         if (s & 0xFFFF_FFFE) == want {
             return (s & 1) != 0;
         }
         pf!(ISVALID_MISS);
         let res = self.ivtp_slow(t1, t2);
-        self.ivm[h].store(want | res as u32, Relaxed);
+        slot.store(want | res as u32, Relaxed);
         res
     }
 
@@ -382,9 +396,10 @@ impl Vocab {
                 pf!(TOKENS);
                 out.push(token);
                 last = token;
-                pos += self.tlen[token as usize] as usize;
+                // SAFETY: token is a valid id (< n == tlen.len()); pos < len here.
+                pos += unsafe { *self.tlen.get_unchecked(token as usize) } as usize;
                 nt = if pos < len {
-                    self.next_match(&text[pos..])
+                    self.next_match(unsafe { text.get_unchecked(pos..) })
                 } else {
                     RANK_MAX
                 };
@@ -563,8 +578,12 @@ impl Vocab {
             // a probe chain can never reach a same-tag stranger (exactness).
             let entries: Vec<(u64, u32, u32)> =
                 e2map.into_iter().map(|(k, (c, b))| (k, c, b)).collect();
+            // Lower load factor = bigger e2 = shorter probe chains. On M3 the
+            // larger table still fits the (big) caches, so trading footprint for
+            // fewer probe loads per next_match step is a net win.
+            const E2_LOAD: f64 = 0.11;
             let mut want_cap = 1usize << 17;
-            while (entries.len() as f64) / (want_cap as f64) > 0.45 {
+            while (entries.len() as f64) / (want_cap as f64) > E2_LOAD {
                 want_cap <<= 1;
             }
             loop {
@@ -592,8 +611,10 @@ impl Vocab {
                 want_cap <<= 1; // never fires at load 0.5; exactness insurance
             }
             // pack otab.
+            // Same big-cache insight as e2: lower load factor = shorter probe
+            // chains in odd_lookup (hit at the end of most next_match walks).
             let mut ocap = 1024usize;
-            while (otmap.len() as f64) / (ocap as f64) > 0.5 {
+            while (otmap.len() as f64) / (ocap as f64) > 0.11 {
                 ocap <<= 1;
             }
             v.otab = vec![0u64; ocap];
